@@ -29,6 +29,46 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 RESERVED_NAMES = {".", ".."}
 
 
+def is_valid_account_name(name: str) -> bool:
+	return bool(SAFE_NAME.match(name)) and name not in RESERVED_NAMES and not name.endswith(".")
+
+
+def is_edge_user_data_dir(path: str) -> bool:
+	"""True when a directory looks like an Edge/Chromium user-data-dir root."""
+	return (
+		os.path.isdir(path)
+		and os.path.isdir(os.path.join(path, PROFILE_NAME))
+		and os.path.isfile(os.path.join(path, "Local State"))
+	)
+
+
+def discover_named_accounts() -> list[str]:
+	"""Return configured multi-account names under USER_DATA_DIR, if any.
+
+	When data-dir itself is the Edge profile, return an empty list so callers
+	use the default single-profile behaviour. Edge component folders such as
+	"Ad Blocking" are ignored.
+	"""
+	if not os.path.isdir(USER_DATA_DIR):
+		return []
+
+	if is_edge_user_data_dir(USER_DATA_DIR):
+		return []
+
+	names: list[str] = []
+
+	for entry in sorted(os.listdir(USER_DATA_DIR)):
+		if not is_valid_account_name(entry):
+			continue
+
+		path = os.path.join(USER_DATA_DIR, entry)
+
+		if is_edge_user_data_dir(path):
+			names.append(entry)
+
+	return names
+
+
 @dataclass(frozen=True)
 class Account:
 	"""A named browser profile to run the tasks against."""
@@ -94,7 +134,7 @@ def configured() -> list[Account]:
 		# different directory than it reads as: "work." is "work", and "..." is
 		# the profile directory itself. Either way two entries end up sharing
 		# one profile, which is the one thing this module exists to prevent.
-		if not SAFE_NAME.match(name) or name in RESERVED_NAMES or name.endswith("."):
+		if not is_valid_account_name(name) or name in RESERVED_NAMES or name.endswith("."):
 			raise ValueError(
 				f"{ENV_VAR} entry {name!r} is not usable as a directory name; "
 				"use letters, digits, dot, dash or underscore, and do not end in a dot"

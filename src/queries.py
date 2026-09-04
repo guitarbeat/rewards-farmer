@@ -31,6 +31,8 @@ DEFAULT_SOURCE = LLM
 
 ENV_VAR = "QUERY_SOURCE"
 
+_resolved_source: str | None = None
+
 
 def selected_source() -> str:
 	"""Read on each call so a test can change it without reimporting."""
@@ -39,9 +41,52 @@ def selected_source() -> str:
 	return choice if choice in (LLM, TRENDS) else DEFAULT_SOURCE
 
 
+def reset_resolved_source_for_tests() -> None:
+	global _resolved_source
+	_resolved_source = None
+
+
+def resolve_source() -> str:
+	"""Pick the query backend for this process, starting Ollama when needed."""
+	global _resolved_source
+
+	if _resolved_source is not None:
+		return _resolved_source
+
+	requested = selected_source()
+	if requested == TRENDS:
+		_resolved_source = TRENDS
+		return _resolved_source
+
+	import ollama_runtime
+
+	if ollama_runtime.ensure_ready():
+		_resolved_source = LLM
+		return _resolved_source
+
+	logger.warning(
+		"Ollama is not reachable after trying to start it. "
+		"Using public trends for search queries this run."
+	)
+	_resolved_source = TRENDS
+	return _resolved_source
+
+
+def log_resolved_source() -> None:
+	source = resolve_source()
+	requested = selected_source()
+
+	if source == LLM:
+		logger.info("Search queries: Ollama (llm)")
+	elif requested == LLM:
+		logger.info("Search queries: public trends (Ollama fallback)")
+	else:
+		logger.info("Search queries: public trends")
+
+
 def search_query_for_task(task_description: str) -> str:
 	"""A query for one "Search on Bing for X" card."""
-	if selected_source() == TRENDS:
+	if resolve_source() == TRENDS:
 		query = query_sources.query_from_task_description(task_description)
 
 		if query:
@@ -60,7 +105,7 @@ def search_query_for_task(task_description: str) -> str:
 
 def related_queries(count: int):
 	"""`count` queries for the daily search quota."""
-	if selected_source() == TRENDS:
+	if resolve_source() == TRENDS:
 		queries = query_sources.related_queries(count)
 
 		if queries:

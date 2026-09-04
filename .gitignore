@@ -6,4 +6,7 @@ visual_search.json
 !nouns.txt
 Todo.md
 data-dir/
+.venv/
+logs/
+.last_run
 __pycache__/

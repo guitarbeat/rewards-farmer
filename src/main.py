@@ -4,7 +4,8 @@ import sys
 
 import log_utils
 import accounts
-import rewards_tasks
+import queries
+import site_registry
 from selenium import webdriver
 from selenium.common.exceptions import SessionNotCreatedException
 
@@ -34,7 +35,7 @@ def build_options(account: accounts.Account) -> webdriver.EdgeOptions:
 	return options
 
 
-def run_account(account: accounts.Account) -> bool:
+def run_account(account: accounts.Account, create_runner: site_registry.SiteFactory) -> bool:
 	"""Work one account. Returns whether the browser started."""
 	try:
 		driver = webdriver.Edge(options=build_options(account))
@@ -51,9 +52,11 @@ def run_account(account: accounts.Account) -> bool:
 
 		return False
 
+	logger.info("[STEP] Starting browser")
+
 	try:
-		rewards = rewards_tasks.RewardsTaskUtils(driver)
-		rewards.complete_all_tasks()
+		runner = create_runner(driver)
+		runner.complete_all_tasks()
 	finally:
 		try:
 			driver.quit()
@@ -71,6 +74,17 @@ def run_account(account: accounts.Account) -> bool:
 
 def main() -> int:
 	log_utils.setup_logging()
+
+	try:
+		site_key, site_label, create_runner = site_registry.resolve()
+	except ValueError as exc:
+		logger.error("[FAIL] %s", exc)
+
+		return 2
+
+	logger.info("Automation site: %s (%s)", site_label, site_key)
+
+	queries.log_resolved_source()
 
 	try:
 		configured = accounts.configured()
@@ -92,7 +106,7 @@ def main() -> int:
 		# never loads - reached here and took the remaining accounts with it.
 		# KeyboardInterrupt is deliberately not caught: Ctrl-C means stop.
 		try:
-			if run_account(account):
+			if run_account(account, create_runner):
 				started += 1
 		except Exception as exc:
 			logger.error(
@@ -104,9 +118,15 @@ def main() -> int:
 	if len(configured) > 1:
 		logger.info("%s/%s accounts ran", started, len(configured))
 
-	# Nothing is watching a container, and stdin is not a terminal there.
-	if not HEADLESS:
-		input("Press Enter to exit...")
+	# Interactive pause only for manual CLI runs. The GUI launcher sets
+	# REWARDS_LAUNCHED_FROM_GUI so a headless subprocess is not left waiting
+	# forever on a Press Enter prompt nobody can see.
+	if not HEADLESS and os.environ.get("REWARDS_LAUNCHED_FROM_GUI") != "1":
+		try:
+			if sys.stdin.isatty():
+				input("Press Enter to exit...")
+		except EOFError:
+			pass
 
 	return 0 if started else 1
 

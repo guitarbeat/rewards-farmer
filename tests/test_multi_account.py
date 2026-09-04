@@ -29,6 +29,7 @@ from selenium.common.exceptions import (
 
 import accounts
 import main
+import site_registry
 from constants import USER_DATA_DIR
 
 # Names that have to be refused, with the reason each one is not simply a
@@ -165,7 +166,7 @@ class TestRunLoop(RunLoopTestCase):
 		self.addCleanup(setattr, main, "run_account", real)
 
 	def _record(self, started):
-		def run_account(account):
+		def run_account(account, create_runner=None):
 			self.calls.append(account.name)
 
 			return started(account.name)
@@ -217,9 +218,10 @@ class TestFailureIsolation(RunLoopTestCase):
 	def setUp(self):
 		super().setUp()
 
-		edge, tasks = main.webdriver.Edge, main.rewards_tasks.RewardsTaskUtils
+		edge = main.webdriver.Edge
+		resolve = site_registry.resolve
 		self.addCleanup(setattr, main.webdriver, "Edge", edge)
-		self.addCleanup(setattr, main.rewards_tasks, "RewardsTaskUtils", tasks)
+		self.addCleanup(setattr, site_registry, "resolve", resolve)
 
 	def _install(self, fail_at, exc, started, quit_cleanly):
 		def account_of(options):
@@ -252,8 +254,14 @@ class TestFailureIsolation(RunLoopTestCase):
 				if self.driver.name == "two" and fail_at == "tasks":
 					raise exc
 
+		def create_runner(driver):
+			return Tasks(driver)
+
+		def resolve(site_key=None):
+			return "ms_rewards", "MS Rewards (Bing)", create_runner
+
 		main.webdriver.Edge = Driver
-		main.rewards_tasks.RewardsTaskUtils = Tasks
+		site_registry.resolve = resolve
 
 	def test_the_remaining_accounts_still_run(self):
 		for label, fail_at, exc in self.CASES:
@@ -277,7 +285,7 @@ class TestFailureIsolation(RunLoopTestCase):
 		real = main.run_account
 		self.addCleanup(setattr, main, "run_account", real)
 
-		def boom(_):
+		def boom(account, create_runner=None):
 			raise WebDriverException("chrome not reachable")
 
 		main.run_account = boom
@@ -337,6 +345,17 @@ class TestTwoRealProfiles(EnvironmentTestCase):
 		self.assertEqual(
 			len({os.path.realpath(a.user_data_dir) for a in (self.first, self.second)}), 2
 		)
+
+
+class TestDiscoverNamedAccounts(unittest.TestCase):
+	def test_single_edge_profile_returns_no_named_accounts(self):
+		if not os.path.isdir(USER_DATA_DIR):
+			self.skipTest("data-dir not present")
+
+		if not accounts.is_edge_user_data_dir(USER_DATA_DIR):
+			self.skipTest("data-dir is not a single Edge profile layout")
+
+		self.assertEqual(accounts.discover_named_accounts(), [])
 
 
 if __name__ == "__main__":
