@@ -14,6 +14,14 @@ _RUN_START_RE = re.compile(r"=== Run #\d+ started")
 _RUN_FINISH_PREFIX = "=== Run finished"
 _STEP_PREFIX = "[STEP] "
 _OUTCOME_PREFIXES = ("[OK] ", "[SKIP] ", "[FAIL] ")
+# logging.Formatter: "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
+_LOG_PREFIX_RE = re.compile(r"^\d{2}:\d{2}:\d{2}\s+\S+\s+\S+:\s+")
+
+
+def _message(line: str) -> str:
+	"""Drop a logging header so markers match either raw or formatted lines."""
+	stripped = line.strip()
+	return _LOG_PREFIX_RE.sub("", stripped, count=1)
 
 
 @dataclass
@@ -61,7 +69,7 @@ class RunProgress:
 				row.state = "pending"
 
 	def update_from_line(self, line: str) -> None:
-		stripped = line.strip()
+		stripped = _message(line)
 		if not stripped:
 			return
 

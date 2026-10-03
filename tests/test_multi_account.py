@@ -13,6 +13,7 @@ that two profiles hold two independent, persistent identities, so it is opt in:
 	REWARDS_BROWSER_TESTS=1 python -m unittest discover -s tests
 """
 
+import json
 import logging
 import os
 import shutil
@@ -64,6 +65,11 @@ class EnvironmentTestCase(unittest.TestCase):
 
 	def setUp(self):
 		self.addCleanup(os.environ.pop, accounts.ACCOUNTS_ENV_VAR, None)
+		self.addCleanup(os.environ.pop, accounts.EDGE_PROFILES_ENV_VAR, None)
+		self.addCleanup(os.environ.pop, "REWARDS_PERSISTENCE", None)
+		self.addCleanup(os.environ.pop, "REWARDS_AUTO", None)
+		self.addCleanup(os.environ.pop, "REWARDS_PROFILE_PICKER", None)
+		self.addCleanup(os.environ.pop, "REWARDS_LAUNCHED_FROM_GUI", None)
 
 
 class TestAccountConfiguration(EnvironmentTestCase):
@@ -144,6 +150,7 @@ class RunLoopTestCase(EnvironmentTestCase):
 
 	def setUp(self):
 		super().setUp()
+		os.environ["REWARDS_PROFILE_PICKER"] = "false"
 
 		# main() waits on input() when it is not headless, which would hang.
 		headless = main.HEADLESS
@@ -357,6 +364,55 @@ class TestDiscoverNamedAccounts(unittest.TestCase):
 			self.skipTest("data-dir is not a single Edge profile layout")
 
 		self.assertEqual(accounts.discover_named_accounts(), [])
+
+
+class TestEdgeProfiles(EnvironmentTestCase):
+	def setUp(self):
+		super().setUp()
+		self.root = os.path.join(os.path.dirname(__file__), "_edge_profiles_tmp")
+		os.makedirs(os.path.join(self.root, "Default"), exist_ok=True)
+		os.makedirs(os.path.join(self.root, "Profile 1"), exist_ok=True)
+		local_state = {
+			"profile": {
+				"info_cache": {
+					"Default": {"gaia_name": "Home", "user_name": "home@example.com"},
+					"Profile 1": {"gaia_name": "Work", "user_name": "work@example.com"},
+				}
+			}
+		}
+		os.makedirs(self.root, exist_ok=True)
+		with open(os.path.join(self.root, "Local State"), "w", encoding="utf-8") as handle:
+			json.dump(local_state, handle)
+		self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+		self.addCleanup(os.environ.pop, accounts.DATA_DIR_ENV_VAR, None)
+		os.environ[accounts.DATA_DIR_ENV_VAR] = self.root
+
+	def test_lists_profiles_from_local_state(self):
+		found = accounts.list_edge_profiles(self.root)
+		self.assertEqual([a.profile_name for a in found], ["Default", "Profile 1"])
+		self.assertTrue(all(a.user_data_dir == self.root for a in found))
+
+	def test_display_label_includes_gaia_name(self):
+		account = accounts.Account(name="Default", user_data_dir=self.root, profile_name="Default")
+		self.assertIn("Home", accounts.account_display_label(account))
+
+	def test_all_selects_every_edge_profile(self):
+		os.environ[accounts.EDGE_PROFILES_ENV_VAR] = "all"
+		configured = accounts.configured()
+		self.assertEqual([a.name for a in configured], ["Default", "Profile 1"])
+
+	def test_named_edge_profiles_keep_one_user_data_dir(self):
+		os.environ[accounts.EDGE_PROFILES_ENV_VAR] = "Profile 1"
+		configured = accounts.configured()
+		self.assertEqual(len(configured), 1)
+		self.assertEqual(configured[0].profile_name, "Profile 1")
+		self.assertEqual(configured[0].user_data_dir, self.root)
+
+	def test_rewards_accounts_still_wins(self):
+		os.environ[accounts.EDGE_PROFILES_ENV_VAR] = "all"
+		os.environ[accounts.ACCOUNTS_ENV_VAR] = "personal"
+		configured = accounts.configured()
+		self.assertEqual([a.name for a in configured], ["personal"])
 
 
 if __name__ == "__main__":

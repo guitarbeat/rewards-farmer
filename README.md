@@ -31,12 +31,14 @@ cd rewards-farmer
 Activate the virtual environment & install dependencies (you may have to use `python -m poetry` instead of `poetry`).
 You must have Python 3.12+ and Poetry installed.
 
-**GUI launcher (cross-platform):**
+**Terminal launcher (cross-platform):**
 
 | OS | Setup | Launch | Desktop shortcut |
 | --- | --- | --- | --- |
 | Windows | `Setup.bat` | `Launch.bat` | `Rewards Farmer.lnk` |
 | macOS / Linux | `./setup.sh` | `./launch.sh` | `.command` / `.desktop` |
+
+`Launch.bat` and `./launch.sh` open a terminal UI in that console: run, stop, progress, past runs, and the log. The Linux shortcut sets `Terminal=true` so the desktop entry has a console.
 
 Or run the shared Python entries directly: `python src/setup_env.py` then `python src/launch.py`. Setup also installs/refreshes the desktop shortcut via `src/install_shortcut.py`.
 
@@ -143,6 +145,32 @@ msedge --user-data-dir="<repo>\data-dir\personal" --profile-directory=Default ht
 ```
 
 They run one after another, and an account that fails is reported and skipped rather than ending the run, whether it fails to start or dies partway through. Leave `REWARDS_ACCOUNTS` unset and everything behaves exactly as before, using the single profile in `data-dir`.
+
+If `data-dir` is a full Edge User Data folder with several people in it (`Default`, `Profile 1`, …), list them with `REWARDS_EDGE_PROFILES` instead of separate directories:
+
+```sh
+REWARDS_EDGE_PROFILES=all python src/main.py
+REWARDS_EDGE_PROFILES="Default,Profile 1" python src/main.py
+```
+
+`REWARDS_ACCOUNTS` still wins if both are set.
+
+### Persistence, auto, and the terminal picker
+
+These only change CLI `python src/main.py`. The terminal launcher sets `REWARDS_LAUNCHED_FROM_GUI` and does not open a menu.
+
+| Variable | Effect |
+|---|---|
+| `REWARDS_PERSISTENCE` | Skip accounts that already finished **today** (logged in `logs/completed_profiles.txt`). Successful runs are recorded. |
+| `REWARDS_AUTO` | No menu. Remaining accounts run in random order. Useful with persistence for an unattended daily pass. |
+| `REWARDS_PROFILE_PICKER` | `true` forces a numbered menu; `false` disables it. Unset: menu appears on a TTY when more than one account is left, not headless, and not launched from the terminal launcher. |
+
+```sh
+REWARDS_ACCOUNTS=personal,spare REWARDS_PERSISTENCE=true python src/main.py
+REWARDS_EDGE_PROFILES=all REWARDS_AUTO=true REWARDS_PERSISTENCE=true python src/main.py
+```
+
+Type `q` in the picker to stop after the profiles you already ran.
 
 ## Docker
 

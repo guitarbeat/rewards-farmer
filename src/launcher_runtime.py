@@ -7,7 +7,9 @@ import re
 import subprocess
 import sys
 import time
+import traceback
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TextIO
 
 import accounts
@@ -112,21 +114,19 @@ def readiness_summary() -> str:
 
 
 def ensure_visual_search_image() -> bool:
-	if os.path.isfile(VISUAL_SEARCH_IMAGE):
-		return True
-
+	path = VISUAL_SEARCH_IMAGE
 	original_cwd = os.getcwd()
 	try:
 		os.chdir(REPO_ROOT)
 		import random_image_for_visual_search
 
-		random_image_for_visual_search.get_random_image()
+		path = random_image_for_visual_search.ensure_visual_search_image(force_refresh=False)
 	except Exception:
-		return False
+		pass
 	finally:
 		os.chdir(original_cwd)
 
-	return os.path.isfile(VISUAL_SEARCH_IMAGE)
+	return os.path.isfile(path) and os.path.getsize(path) > 0
 
 
 def open_path_in_file_manager(path: str) -> None:
@@ -430,3 +430,38 @@ def stop_run_process(process: subprocess.Popen[str], *, grace_seconds: float = S
 		process.kill()
 
 	process.wait(timeout=5)
+
+
+CRASH_LOG_FILE = os.path.join(LOG_DIR, "launcher_crash.log")
+
+
+def write_crash_log(exc: BaseException | None = None, *, text: str | None = None) -> None:
+	"""Persist a launcher traceback."""
+	try:
+		os.makedirs(LOG_DIR, exist_ok=True)
+		stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+		with open(CRASH_LOG_FILE, "a", encoding="utf-8") as handle:
+			handle.write(f"\n=== Launcher crash {stamp} ===\n")
+			if text:
+				handle.write(text.rstrip() + "\n")
+			if exc is not None:
+				handle.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+			elif text is None:
+				handle.write("".join(traceback.format_exception(*sys.exc_info())))
+	except OSError:
+		pass
+
+
+def install_crash_hooks() -> None:
+	def _hook(exc_type, exc, tb) -> None:
+		try:
+			os.makedirs(LOG_DIR, exist_ok=True)
+			stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+			with open(CRASH_LOG_FILE, "a", encoding="utf-8") as handle:
+				handle.write(f"\n=== Launcher crash {stamp} ===\n")
+				handle.write("".join(traceback.format_exception(exc_type, exc, tb)))
+		except OSError:
+			pass
+		sys.__excepthook__(exc_type, exc, tb)
+
+	sys.excepthook = _hook

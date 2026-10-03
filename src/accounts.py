@@ -10,6 +10,7 @@ Unset, the run uses the single profile in constants.py exactly as before, so
 nothing about an existing setup changes.
 """
 
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from constants import DEFAULT_ROOT_DATA_DIR
 
 ACCOUNTS_ENV_VAR = "REWARDS_ACCOUNTS"
 DATA_DIR_ENV_VAR = "USER_DATA_DIR"
+EDGE_PROFILES_ENV_VAR = "REWARDS_EDGE_PROFILES"
 
 PROFILE_NAME = "Default"
 
@@ -133,6 +135,111 @@ def get_default_account() -> Account:
 		profile_name=PROFILE_NAME,
 	)
 
+
+def _root_data_dir() -> str:
+	return os.environ.get(DATA_DIR_ENV_VAR, DEFAULT_ROOT_DATA_DIR)
+
+
+def read_edge_info_cache(user_data_dir: str | None = None) -> dict:
+	"""Profile info_cache from Edge Local State, or {} if unreadable."""
+	root = user_data_dir or _root_data_dir()
+	local_state = os.path.join(root, "Local State")
+	try:
+		with open(local_state, encoding="utf-8") as handle:
+			data = json.load(handle)
+	except (OSError, json.JSONDecodeError):
+		return {}
+
+	if not isinstance(data, dict):
+		return {}
+
+	profile = data.get("profile")
+	if not isinstance(profile, dict):
+		return {}
+
+	cache = profile.get("info_cache")
+	return cache if isinstance(cache, dict) else {}
+
+
+def list_edge_profiles(user_data_dir: str | None = None) -> list[Account]:
+	"""Edge profiles inside a single user-data-dir, from Local State + folders."""
+	root = user_data_dir or _root_data_dir()
+	cache = read_edge_info_cache(root)
+	names: list[str] = []
+	seen: set[str] = set()
+
+	for name in cache:
+		if not isinstance(name, str) or name in seen:
+			continue
+		profile_dir = os.path.join(root, name)
+		if os.path.isdir(profile_dir):
+			names.append(name)
+			seen.add(name)
+
+	if PROFILE_NAME not in seen and os.path.isdir(os.path.join(root, PROFILE_NAME)):
+		names.insert(0, PROFILE_NAME)
+
+	return [
+		Account(name=name, user_data_dir=root, profile_name=name)
+		for name in names
+	]
+
+
+def account_display_label(account: Account) -> str:
+	"""Human label: directory name plus Edge account names when Local State has them."""
+	cache = read_edge_info_cache(account.user_data_dir)
+	info = cache.get(account.profile_name)
+	if not isinstance(info, dict):
+		return account.name
+
+	parts = [
+		str(info[key]).strip()
+		for key in ("gaia_name", "user_name", "name")
+		if info.get(key)
+	]
+	# Keep unique extra names that are not already the directory name.
+	extras = [part for part in parts if part and part.lower() != account.name.lower()]
+	seen: list[str] = []
+	for extra in extras:
+		if extra not in seen:
+			seen.append(extra)
+	if seen:
+		return f"{account.name} — {' · '.join(seen)}"
+	return account.name
+
+
+def _accounts_from_edge_profiles_env() -> list[Account] | None:
+	raw = os.environ.get(EDGE_PROFILES_ENV_VAR, "").strip()
+	if not raw:
+		return None
+
+	root = _root_data_dir()
+	available = {account.profile_name: account for account in list_edge_profiles(root)}
+
+	if raw.lower() == "all":
+		if available:
+			return list(available.values())
+		return [get_default_account()]
+
+	names = [part.strip() for part in raw.split(",") if part.strip()]
+	if not names:
+		return [get_default_account()]
+
+	accounts: list[Account] = []
+	seen: set[str] = set()
+	for name in names:
+		key = name.lower()
+		if key in seen:
+			continue
+		seen.add(key)
+		if name in available:
+			accounts.append(available[name])
+		else:
+			accounts.append(Account(name=name, user_data_dir=root, profile_name=name))
+
+	return accounts or [get_default_account()]
+
+
 def configured() -> list[Account]:
 	"""Accounts for this run, in order.
 
@@ -142,6 +249,9 @@ def configured() -> list[Account]:
 	raw = os.environ.get(ACCOUNTS_ENV_VAR, "").strip()
 
 	if not raw:
+		edge_accounts = _accounts_from_edge_profiles_env()
+		if edge_accounts is not None:
+			return edge_accounts
 		return [get_default_account()]
 
 	names = [part.strip() for part in raw.split(",")]

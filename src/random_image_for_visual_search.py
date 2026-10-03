@@ -217,6 +217,51 @@ def generate_fallback_image():
 	return {"title": "Fallback Synthetic Image", "width": 800, "height": 600}
 
 
+def _usable_image_path() -> str | None:
+	if OUTPUT_FILE.is_file() and OUTPUT_FILE.stat().st_size > 0:
+		return str(OUTPUT_FILE)
+	return None
+
+
+def ensure_visual_search_image(*, force_refresh: bool = False) -> str:
+	"""Return a path to visual_search.jpg, downloading or generating if needed.
+
+	When force_refresh is true, always try Wikimedia first so Bing gets a new
+	image each run. Network or rate-limit failures fall back to a synthetic
+	PIL image, then to whatever file is already on disk.
+	"""
+	if not force_refresh:
+		existing = _usable_image_path()
+		if existing is not None:
+			return existing
+
+	logger.info("Fetching a fresh random image from Wikipedia API for visual search...")
+	try:
+		get_random_image()
+		existing = _usable_image_path()
+		if existing is not None:
+			logger.info("Fetched new random image from Wikipedia successfully: %s", existing)
+			return existing
+	except Exception as exc:
+		logger.warning("Could not download random image from Wikipedia: %s", exc)
+
+	try:
+		generate_fallback_image()
+		existing = _usable_image_path()
+		if existing is not None:
+			logger.info("Generated new synthetic fallback image for visual search.")
+			return existing
+	except Exception as exc:
+		logger.warning("Could not generate synthetic image: %s", exc)
+
+	existing = _usable_image_path()
+	if existing is not None:
+		logger.info("Falling back to existing visual_search.jpg.")
+		return existing
+
+	return str(OUTPUT_FILE)
+
+
 # ============================================================
 # RANDOM IMAGE
 # ============================================================

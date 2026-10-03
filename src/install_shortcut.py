@@ -114,7 +114,7 @@ def _install_linux() -> str:
 		Comment=Launch Rewards Farmer
 		Exec={exec_line}
 		Icon={icon}
-		Terminal=false
+		Terminal=true
 		Categories=Utility;
 		Path={REPO_ROOT}
 		"""

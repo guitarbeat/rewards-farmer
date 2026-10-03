@@ -258,5 +258,52 @@ class DailySetActivityUrls(unittest.TestCase):
 		self.assertEqual(len(found), 2)
 
 
+class VisualSearchSelectors(unittest.TestCase):
+	def test_finds_visual_search_streak_button(self):
+		btn = FakeElement(text="Visual Search Streak")
+		driver = FakeDriver(children={(By.TAG_NAME, "button"): [btn]})
+		self.assertEqual(selectors_for(driver).get_open_visual_search_sidebar(), btn)
+
+	def test_finds_visual_search_without_streak_word(self):
+		btn = FakeElement(text="Visual Search")
+		driver = FakeDriver(children={(By.TAG_NAME, "button"): [btn]})
+		self.assertEqual(selectors_for(driver).get_open_visual_search_sidebar(), btn)
+
+	def test_finds_sidebar_link_search_now_in_two_link_panel(self):
+		link1 = FakeElement(text="Activity: 0/1")
+		link2 = FakeElement(text="Search now")
+		panel = FakeElement(
+			text="Visual Search Streak",
+			attributes={"id": "react-aria-99"},
+			children={(By.TAG_NAME, "a"): [link1, link2]}
+		)
+		driver = FakeDriver(children={(By.TAG_NAME, "section"): [panel]})
+		self.assertEqual(selectors_for(driver).get_search_now_link_from_visual_search_sidebar(), link2)
+
+	def test_finds_sidebar_link_activate_streak_in_one_link_panel(self):
+		# Accounts that have never completed visual search have only 1 link.
+		link = FakeElement(text="Activate streak")
+		panel = FakeElement(
+			text="Visual Search Streak",
+			attributes={"id": "react-aria-99"},
+			children={(By.TAG_NAME, "a"): [link]}
+		)
+		driver = FakeDriver(children={(By.TAG_NAME, "section"): [panel]})
+		self.assertEqual(selectors_for(driver).get_search_now_link_from_visual_search_sidebar(), link)
+
+	def test_falls_back_to_last_link_with_vsstreak_url(self):
+		link = FakeElement(
+			text="Click here",
+			attributes={"href": "https://www.bing.com/?features=vsstreak,vstooltip&form=ML2XES"}
+		)
+		panel = FakeElement(
+			text="Visual Search",
+			attributes={"id": "react-aria-99"},
+			children={(By.TAG_NAME, "a"): [link]}
+		)
+		driver = FakeDriver(children={(By.TAG_NAME, "section"): [panel]})
+		self.assertEqual(selectors_for(driver).get_search_now_link_from_visual_search_sidebar(), link)
+
+
 if __name__ == "__main__":
 	unittest.main()

@@ -50,16 +50,12 @@ def _install_dependencies(poetry: list[str]) -> None:
 	code = _run([*poetry, "install", "--no-interaction"], check=False)
 	if code != 0:
 		print("[ERROR] poetry install failed.")
-		print("If pythonnet failed on Windows, try: python -m pip install 'pythonnet>=3.0.5'")
 		raise SystemExit(1)
 
 	python = _venv_python()
 	if not os.path.isfile(python):
 		print(f"[ERROR] Expected {python} was not created.")
 		raise SystemExit(1)
-
-	if sys.platform == "win32":
-		_run([python, "-m", "pip", "install", "--upgrade", "pythonnet>=3.0.5"], check=False)
 
 
 def _ensure_icons(python: str) -> None:
@@ -82,7 +78,7 @@ def _verify_imports(python: str) -> None:
 			"-c",
 			(
 				"import sys; sys.path.insert(0, 'src'); "
-				"import customtkinter, webview, selenium, numpy, requests, PIL, ollama, dotenv, "
+				"import textual, selenium, numpy, requests, PIL, ollama, dotenv, "
 				"mouse_trajectory, site_registry; "
 				"from sites.ms_rewards.runner import RewardsTaskUtils; "
 				"site_registry.resolve('ms_rewards'); "

@@ -360,7 +360,15 @@ class ProgressInsideTasks(unittest.TestCase):
 	def _tasks(self, **elements):
 		tasks = make_tasks()
 
-		tasks.driver = types.SimpleNamespace(current_window_handle="main", get=lambda url: None)
+		tasks.driver = types.SimpleNamespace(
+			current_window_handle="main",
+			window_handles=["main"],
+			current_url="https://rewards.bing.com/",
+			get=lambda url: None,
+			execute_script=lambda *a, **k: None,
+			find_elements=lambda *a, **k: [],
+			switch_to=types.SimpleNamespace(window=lambda handle: None),
+		)
 		tasks.elements = types.SimpleNamespace(**elements)
 		tasks.tab_utils = types.SimpleNamespace(
 			close_all_other_tabs=lambda exceptions=None: None,
@@ -417,11 +425,15 @@ class ProgressInsideTasks(unittest.TestCase):
 		self.assertIn("[SKIP] Explore on Bing: not available in this UI variant", output)
 
 	def test_visual_search_that_opened_its_sidebar_is_not_called_unavailable(self):
-		# The sidebar is there, the link inside it is not.
+		# The sidebar is there, the link inside it is not. The task then
+		# falls back to Bing's visual search URL, so absence of that link
+		# is not "this market does not ship visual search".
 		sidebar, search_now = object(), object()
 		tasks = self._tasks(
 			get_open_visual_search_sidebar=sidebar,
 			get_search_now_link_from_visual_search_sidebar=search_now,
+			get_visual_search_button=object(),
+			get_visual_search_file_input=object(),
 		)
 
 		def wait_for_then_click(getter, timeout=10):
@@ -429,27 +441,45 @@ class ProgressInsideTasks(unittest.TestCase):
 				raise ElementNeverAppeared("nothing matched")
 
 		tasks.wait_for_then_click = wait_for_then_click
+		tasks.wait_for_element = failing_on(1, ElementNeverAppeared("nothing matched"))
 
-		with mock.patch.object(rewards_tasks, "VISUAL_SEARCH_IMAGE_PATH", __file__):
+		with mock.patch(
+			"sites.ms_rewards.tasks.visual_search.random_image_for_visual_search.ensure_visual_search_image",
+			return_value=__file__,
+		):
 			output = self._report(tasks, "complete_visual_search")
 
 		self.assertIn(
-			"[FAIL] Visual search: opened the sidebar, then the next element never appeared",
+			"[FAIL] Visual search: opened the visual search page, then the next element never appeared",
 			output,
 		)
 
-	def test_visual_search_without_its_sidebar_is_still_skipped(self):
-		tasks = self._tasks(get_open_visual_search_sidebar=object())
+	def test_visual_search_without_its_sidebar_falls_back_to_bing(self):
+		# Missing Rewards sidebar used to skip the task. Direct Bing URL is
+		# enough to run visual search, so that is a fallback rather than absence.
+		tasks = self._tasks(
+			get_open_visual_search_sidebar=object(),
+			get_visual_search_button=object(),
+			get_visual_search_file_input=object(),
+		)
 
 		def wait_for_then_click(getter, timeout=10):
 			raise ElementNeverAppeared("nothing matched")
 
 		tasks.wait_for_then_click = wait_for_then_click
+		tasks.wait_for_element = failing_on(1, ElementNeverAppeared("nothing matched"))
 
-		with mock.patch.object(rewards_tasks, "VISUAL_SEARCH_IMAGE_PATH", __file__):
+		with mock.patch(
+			"sites.ms_rewards.tasks.visual_search.random_image_for_visual_search.ensure_visual_search_image",
+			return_value=__file__,
+		):
 			output = self._report(tasks, "complete_visual_search")
 
-		self.assertIn("[SKIP] Visual search: not available in this UI variant", output)
+		self.assertIn(
+			"[FAIL] Visual search: opened the visual search page, then the next element never appeared",
+			output,
+		)
+		self.assertNotIn("Visual search: not available", output)
 
 	def test_required_searches_count_every_search_across_rounds(self):
 		# 0/30 asks for ten searches, 15/30 after them for five more. The

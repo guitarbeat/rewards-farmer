@@ -1,4 +1,4 @@
-"""Scripted usability path for the webview bridge (no native mouse)."""
+"""Scripted usability path for the launcher controller (no window)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import launcher_controller as ctl
-import launcher_webview as web
 
 
 class FakeProc:
@@ -44,40 +43,40 @@ def main() -> int:
 	for patcher in patches:
 		patcher.start()
 
-	bridge = web.LauncherBridge()
-	boot = bridge.bootstrap()
-	assert boot["snapshot"]["run_enabled"], boot
-	assert boot["snapshot"]["run_button_text"] == "Run"
+	controller = ctl.LauncherController()
+	boot = controller.initial_snapshot()
+	assert boot.run_enabled, boot
+	assert boot.run_button_text == "Run"
 
 	fake = FakeProc()
-	# Keep the fake process "running" until we stop; don't auto-finish via empty stdout.
 	with mock.patch.object(ctl.runtime, "spawn_run_process", return_value=fake), mock.patch.object(
 		ctl.LauncherController, "_reader_thread", lambda self, process: None
 	):
-		err = bridge.start_run()
-		assert err["error"] is None, err
+		err = controller.start_run()
+		assert err is None, err
 
-		bridge.controller._process_log_text("[STEP] Starting browser\n", to_file=False)
-		bridge.controller._process_log_text("[OK] Starting browser\n", to_file=False)
-		bridge.controller._process_log_text("[STEP] Bing daily set\n", to_file=False)
-		polled = bridge.poll()
-		assert polled["logs"], polled
-		assert any(r["state"] == "running" for r in polled["snapshot"]["progress_rows"]), polled["snapshot"]["progress_rows"]
-		assert polled["snapshot"]["stop_enabled"], polled["snapshot"]
+		controller._process_log_text("[STEP] Starting browser\n", to_file=False)
+		controller._process_log_text("[OK] Starting browser\n", to_file=False)
+		controller._process_log_text("[STEP] Bing daily set\n", to_file=False)
+		controller.poll_output()
+		rows = controller.initial_snapshot().progress_rows
+		assert any(row.state == "running" for row in rows), rows
+		assert controller.initial_snapshot().stop_enabled
 
-		bridge.stop_run()
+		controller.stop_run()
 		fake._code = 0
-		bridge.controller.output_queue.put(None)
-		finished = bridge.poll()
-		assert finished["snapshot"]["run_enabled"]
-		assert finished["snapshot"]["run_button_text"] == "Run again"
+		controller.output_queue.put(None)
+		controller.poll_output()
+		finished = controller.initial_snapshot()
+		assert finished.run_enabled
+		assert finished.run_button_text == "Run again"
 
-		cleared = bridge.clear_log()
-		assert cleared["error"] is None
+		cleared = controller.clear_log()
+		assert cleared is None
 
 		print("USABILITY_BRIDGE_OK")
-		print("status:", finished["snapshot"]["status_text"])
-		print("rows:", len(finished["snapshot"]["progress_rows"]))
+		print("status:", finished.status_text)
+		print("rows:", len(finished.progress_rows))
 	tmp.cleanup()
 	return 0
 

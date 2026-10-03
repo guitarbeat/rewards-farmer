@@ -13,7 +13,7 @@ PNG_PATH = ASSETS_DIR / "rewards-farmer.png"
 
 SIZES = (16, 24, 32, 48, 64, 128, 256)
 
-# Match launcher_theme accent palette
+# Accent palette used by the desktop shortcut icon
 TEAL_TOP = (18, 156, 125)
 TEAL_BOTTOM = (6, 88, 118)
 TEAL_EDGE = (4, 62, 82)

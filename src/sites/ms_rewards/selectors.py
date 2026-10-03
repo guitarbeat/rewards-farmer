@@ -36,9 +36,33 @@ class Labels:
 	CLAIM = "claim"                      # exact label preferred, substring as fallback
 	DAILY_SET_STREAK = "daily set streak"
 	CARD_COMPLETED = "completed"
-	# The full streak label on purpose: plain "visual search" also matches an
-	# element on the dashboard, which can go stale mid-interaction.
+	# Prefer the full streak label: plain "visual search" can also match a
+	# dashboard control that goes stale mid-interaction. Later needles are
+	# fallbacks for markets and unactivated-streak layouts.
 	VISUAL_SEARCH_STREAK = "visual search streak"
+	VISUAL_SEARCH_NEEDLES = (
+		"visual search streak",
+		"visual search",
+		"image search",
+		"recherche visuelle",
+		"ricerca visiva",
+		"búsqueda visual",
+		"visuelle suche",
+		"pesquisa visual",
+	)
+	VISUAL_SEARCH_LINK_NEEDLES = (
+		"search now",
+		"activate streak",
+		"activate",
+		"rechercher",
+		"activer",
+		"cerca ora",
+		"attiva",
+		"buscar ahora",
+		"activar",
+		"jetzt suchen",
+		"aktivieren",
+	)
 
 
 class ElementSelectionUtils:
@@ -268,28 +292,70 @@ class ElementSelectionUtils:
 	# ------------------------------------------------------------------
 
 	def get_open_visual_search_sidebar(self):
+		for needle in Labels.VISUAL_SEARCH_NEEDLES:
+			try:
+				return self._button_containing(needle)
+			except NoSuchElementException:
+				continue
+
 		try:
-			return self._button_containing(Labels.VISUAL_SEARCH_STREAK)
+			streaks = self.driver.find_element(By.ID, "streaks")
+			for btn in streaks.find_elements(By.TAG_NAME, "button"):
+				btn_text = (btn.text or "").lower()
+				aria = (btn.get_attribute("aria-label") or "").lower()
+				if any(key in btn_text or key in aria for key in ("visual", "image", "streak")):
+					if "daily" not in btn_text and "daily" not in aria:
+						return btn
 		except NoSuchElementException:
-			# Not every layout ships this entry point. Where it does but the
-			# label differs, fall back to the original position in streaks.
-			return self._streaks_button(5)
+			pass
+
+		# Not every layout ships this entry point. Where it does but the
+		# label differs, fall back to the original position in streaks.
+		return self._streaks_button(5)
 
 	def get_search_now_link_from_visual_search_sidebar(self):
 		sidebar = self.get_sidebar_section()
 
-		try:
-			return self._link_containing("search now", sidebar)
-		except NoSuchElementException:
-			# Fall back to the original positional behaviour.
-			links = sidebar.find_elements(By.TAG_NAME, "a")
+		for label in Labels.VISUAL_SEARCH_LINK_NEEDLES:
+			try:
+				return self._link_containing(label, sidebar)
+			except NoSuchElementException:
+				continue
 
-			if len(links) < 2:
-				raise NoSuchElementException("visual search sidebar has no usable link")
+		for link in sidebar.find_elements(By.TAG_NAME, "a"):
+			href = (link.get_attribute("href") or link.get_dom_attribute("href") or "").lower()
+			if "vsstreak" in href or "bing.com" in href:
+				return link
 
-			return links[1]
+		links = sidebar.find_elements(By.TAG_NAME, "a")
+		if links:
+			return links[-1]
+
+		raise NoSuchElementException("visual search sidebar has no usable link")
 
 	def get_visual_search_button(self):
+		for selector in (
+			"#sb_form > div.camera.icon",
+			"#sb_form .camera.icon",
+			"#sb_form div.camera",
+			"#sb_form [aria-label*='visual search' i]",
+			"#sb_form [aria-label*='image' i]",
+			"#sb_form [title*='visual search' i]",
+			"#sb_form [title*='image' i]",
+			"#vs_icon",
+			"div[aria-label*='image' i]",
+			"div[aria-label*='visual search' i]",
+			"button[aria-label*='visual search' i]",
+			"button[aria-label*='image' i]",
+			"[data-action='camera']",
+		):
+			for elem in self.driver.find_elements(By.CSS_SELECTOR, selector):
+				try:
+					if elem.is_displayed():
+						return elem
+				except StaleElementReferenceException:
+					continue
+
 		return self.driver.find_element(By.CSS_SELECTOR, "#sb_form > div.camera.icon")
 
 	def get_visual_search_file_input(self):

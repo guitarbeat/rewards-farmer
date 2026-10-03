@@ -6,7 +6,9 @@ import dotenv
 import log_utils
 import accounts
 import browser
+import daily_completion
 import desktop_utils
+import profile_picker
 import queries
 import site_registry
 
@@ -51,6 +53,37 @@ def run_account(account: accounts.Account, create_runner: site_registry.SiteFact
 	return True
 
 
+def _run_one(account: accounts.Account, create_runner) -> bool:
+	if run_account(account, create_runner):
+		if daily_completion.persistence_enabled():
+			daily_completion.mark_completed(account.name)
+		return True
+	return False
+
+
+def _run_selected_accounts(selected: list[accounts.Account], create_runner) -> int:
+	started = 0
+	total = len(selected)
+
+	for account in selected:
+		if total > 1:
+			logger.info("=== account: %s ===", account.name)
+
+		try:
+			if _run_one(account, create_runner):
+				started += 1
+		except Exception as exc:
+			logger.error(
+				"[FAIL] %s: %s: %s",
+				account.name,
+				type(exc).__name__,
+				log_utils.exception_summary(exc),
+				exc_info=logger.isEnabledFor(logging.DEBUG),
+			)
+
+	return started
+
+
 def main() -> int:
 	log_utils.setup_logging()
 	desktop_utils.reset_virtual_desktop_state()
@@ -76,39 +109,56 @@ def main() -> int:
 
 		return 2
 
+	remaining = daily_completion.remaining(configured)
+	if daily_completion.persistence_enabled():
+		skipped = len(configured) - len(remaining)
+		if skipped:
+			logger.info("Persistence: skipping %s account(s) already completed today.", skipped)
+
+	if not remaining:
+		logger.info("All configured accounts already completed today.")
+		desktop_utils.cleanup_virtual_desktop()
+		return 0
+
 	started = 0
 
-	for account in configured:
-		if len(configured) > 1:
-			logger.info("=== account: %s ===", account.name)
+	if profile_picker.should_use_picker(len(remaining)):
+		while True:
+			remaining = daily_completion.remaining(configured)
+			if not remaining:
+				logger.info("All configured accounts already completed today.")
+				break
 
-		# One account must not be able to end the batch. complete_all_tasks
-		# already contains a task that fails, and run_account names the profile
-		# that is already open, but everything else - a driver that will not
-		# start for some other reason, the browser dying mid-run, a page that
-		# never loads - reached here and took the remaining accounts with it.
-		# KeyboardInterrupt is deliberately not caught: Ctrl-C means stop.
-		try:
-			if run_account(account, create_runner):
-				started += 1
-		except Exception as exc:
-			logger.error(
-				"[FAIL] %s: %s: %s",
-				account.name,
-				type(exc).__name__,
-				log_utils.exception_summary(exc),
-				exc_info=logger.isEnabledFor(logging.DEBUG),
-			)
+			choice = profile_picker.choose_account(remaining)
+			if choice is None:
+				logger.info("Profile picker finished.")
+				break
+
+			logger.info("Selected profile: %s", choice.name)
+			try:
+				if _run_one(choice, create_runner):
+					started += 1
+			except Exception as exc:
+				logger.error(
+					"[FAIL] %s: %s: %s",
+					choice.name,
+					type(exc).__name__,
+					log_utils.exception_summary(exc),
+					exc_info=logger.isEnabledFor(logging.DEBUG),
+				)
+	else:
+		selected = profile_picker.order_for_auto(remaining)
+		started = _run_selected_accounts(selected, create_runner)
 
 	if len(configured) > 1:
 		logger.info("%s/%s accounts ran", started, len(configured))
 
-	# Interactive pause only for manual CLI runs. The GUI launcher sets
+	# Interactive pause only for manual CLI runs. The terminal launcher sets
 	# REWARDS_LAUNCHED_FROM_GUI so a headless subprocess is not left waiting
 	# forever on a Press Enter prompt nobody can see.
 	if not HEADLESS and os.environ.get("REWARDS_LAUNCHED_FROM_GUI") != "1":
 		try:
-			if sys.stdin.isatty():
+			if sys.stdin.isatty() and not profile_picker.auto_enabled():
 				input("Press Enter to exit...")
 		except EOFError:
 			pass

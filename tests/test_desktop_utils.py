@@ -138,12 +138,13 @@ class PlatformSafetyTests(unittest.TestCase):
 			desktop_utils.switch_back_after_launch()
 			self.assertFalse(desktop_utils._desktop_created)
 
+	@mock.patch("desktop_utils.get_desktop_registry_data", return_value=([], None))
 	@mock.patch("desktop_utils.time.sleep")
 	@mock.patch("desktop_utils.is_windows", return_value=True)
 	@mock.patch("desktop_utils.create_virtual_desktop", return_value=True)
 	@mock.patch("desktop_utils.switch_to_left_desktop", return_value=True)
 	@mock.patch("desktop_utils.switch_to_right_desktop", return_value=True)
-	def test_desktop_lifecycle_tracks_creation(self, mock_right, mock_left, mock_create, mock_is_win, mock_sleep):
+	def test_desktop_lifecycle_tracks_creation(self, mock_right, mock_left, mock_create, mock_is_win, mock_sleep, mock_reg):
 		with mock.patch.dict(os.environ, {"USE_VIRTUAL_DESKTOP": "true", "SWITCH_BACK_TO_MAIN_DESKTOP": "true"}):
 			# First launch creates the virtual desktop
 			self.assertTrue(desktop_utils.prepare_desktop_before_launch())
@@ -206,12 +207,13 @@ class PlatformSafetyTests(unittest.TestCase):
 		mock_start_driver.assert_not_called()
 		mock_switch_back.assert_called_once()
 
+	@mock.patch("desktop_utils.get_desktop_registry_data", return_value=([], None))
 	@mock.patch("desktop_utils.time.sleep")
 	@mock.patch("desktop_utils.is_windows", return_value=True)
 	@mock.patch("desktop_utils.create_virtual_desktop", return_value=True)
 	@mock.patch("desktop_utils.switch_to_left_desktop", return_value=True)
 	@mock.patch("desktop_utils.switch_to_right_desktop", return_value=True)
-	def test_multi_account_with_switch_back_enabled(self, mock_right, mock_left, mock_create, mock_is_win, mock_sleep):
+	def test_multi_account_with_switch_back_enabled(self, mock_right, mock_left, mock_create, mock_is_win, mock_sleep, mock_reg):
 		with mock.patch.dict(os.environ, {"USE_VIRTUAL_DESKTOP": "true", "SWITCH_BACK_TO_MAIN_DESKTOP": "true"}):
 			# Account 1
 			desktop_utils.prepare_desktop_before_launch()
@@ -231,12 +233,13 @@ class PlatformSafetyTests(unittest.TestCase):
 			self.assertEqual(mock_left.call_count, desktop_utils._hops_to_worker * 2)
 			self.assertFalse(desktop_utils._on_worker_desktop)
 
+	@mock.patch("desktop_utils.get_desktop_registry_data", return_value=([], None))
 	@mock.patch("desktop_utils.time.sleep")
 	@mock.patch("desktop_utils.is_windows", return_value=True)
 	@mock.patch("desktop_utils.create_virtual_desktop", return_value=True)
 	@mock.patch("desktop_utils.switch_to_left_desktop", return_value=True)
 	@mock.patch("desktop_utils.switch_to_right_desktop", return_value=True)
-	def test_multi_account_with_switch_back_disabled(self, mock_right, mock_left, mock_create, mock_is_win, mock_sleep):
+	def test_multi_account_with_switch_back_disabled(self, mock_right, mock_left, mock_create, mock_is_win, mock_sleep, mock_reg):
 		with mock.patch.dict(os.environ, {"USE_VIRTUAL_DESKTOP": "true", "SWITCH_BACK_TO_MAIN_DESKTOP": "false"}):
 			# Account 1
 			desktop_utils.prepare_desktop_before_launch()
@@ -270,9 +273,15 @@ class PlatformSafetyTests(unittest.TestCase):
 	def test_reset_virtual_desktop_state_resets_all_flags(self):
 		desktop_utils._desktop_created = True
 		desktop_utils._on_worker_desktop = True
+		desktop_utils._start_desktop_id = b"\x01" * 16
+		desktop_utils._worker_desktop_id = b"\x02" * 16
+		desktop_utils._hops_to_worker = 3
 		desktop_utils.reset_virtual_desktop_state()
 		self.assertFalse(desktop_utils._desktop_created)
 		self.assertFalse(desktop_utils._on_worker_desktop)
+		self.assertIsNone(desktop_utils._start_desktop_id)
+		self.assertIsNone(desktop_utils._worker_desktop_id)
+		self.assertEqual(desktop_utils._hops_to_worker, 1)
 
 	@mock.patch("desktop_utils.is_windows", return_value=True)
 	def test_press_hotkey_releases_keys_on_key_down_error(self, mock_is_win):
@@ -335,13 +344,14 @@ class PlatformSafetyTests(unittest.TestCase):
 	def test_get_desktop_state_returns_fallback_on_non_windows(self, mock_is_win):
 		self.assertEqual(desktop_utils.get_desktop_state(), (0, 1))
 
+	@mock.patch("desktop_utils.get_desktop_registry_data", return_value=([], None))
 	@mock.patch("desktop_utils.time.sleep")
 	@mock.patch("desktop_utils.is_windows", return_value=True)
 	@mock.patch("desktop_utils.create_virtual_desktop", return_value=True)
 	@mock.patch("desktop_utils.switch_to_left_desktop", return_value=True)
 	@mock.patch("desktop_utils.switch_to_right_desktop", return_value=True)
 	def test_multi_hop_navigation_tracks_exact_starting_desktop(
-		self, mock_right, mock_left, mock_create, mock_is_win, mock_sleep
+		self, mock_right, mock_left, mock_create, mock_is_win, mock_sleep, mock_reg
 	):
 		# Simulate user on Desktop 1 (idx 0) out of 3 total desktops
 		# When Desktop 4 is created, total becomes 4, so hops = 3 - 0 = 3
@@ -364,13 +374,14 @@ class PlatformSafetyTests(unittest.TestCase):
 				self.assertEqual(mock_right.call_count, 3)
 				self.assertTrue(desktop_utils._on_worker_desktop)
 
+	@mock.patch("desktop_utils.get_desktop_registry_data", return_value=([], None))
 	@mock.patch("desktop_utils.time.sleep")
 	@mock.patch("desktop_utils.is_windows", return_value=True)
 	@mock.patch("desktop_utils.close_current_virtual_desktop", return_value=True)
 	@mock.patch("desktop_utils.switch_to_left_desktop", return_value=True)
 	@mock.patch("desktop_utils.switch_to_right_desktop", return_value=True)
 	def test_cleanup_virtual_desktop_closes_and_compensates_left_shift(
-		self, mock_right, mock_left, mock_close, mock_is_win, mock_sleep
+		self, mock_right, mock_left, mock_close, mock_is_win, mock_sleep, mock_reg
 	):
 		# Given _hops_to_worker = 3, user on main desktop:
 		# 1. Switch right 3 times to worker desktop
@@ -397,6 +408,89 @@ class PlatformSafetyTests(unittest.TestCase):
 			self.assertTrue(desktop_utils.cleanup_virtual_desktop())
 		mock_close.assert_not_called()
 		self.assertTrue(desktop_utils._desktop_created)
+
+	@mock.patch("desktop_utils.time.sleep")
+	@mock.patch("desktop_utils.is_windows", return_value=True)
+	@mock.patch("desktop_utils.switch_to_left_desktop", return_value=True)
+	@mock.patch("desktop_utils.switch_to_right_desktop", return_value=True)
+	def test_guid_navigation_reordered_desktops_moves_correct_direction(
+		self, mock_right, mock_left, mock_is_win, mock_sleep
+	):
+		id_a = b"\x01" * 16
+		id_b = b"\x02" * 16
+		id_c = b"\x03" * 16
+
+		with mock.patch("desktop_utils.get_desktop_registry_data", return_value=([id_a, id_b, id_c], id_c)):
+			self.assertTrue(desktop_utils._navigate_to_guid(id_a))
+			self.assertEqual(mock_left.call_count, 2)
+			mock_right.assert_not_called()
+
+		mock_left.reset_mock()
+		mock_right.reset_mock()
+
+		with mock.patch("desktop_utils.get_desktop_registry_data", return_value=([id_a, id_b, id_c], id_a)):
+			self.assertTrue(desktop_utils._navigate_to_guid(id_c))
+			self.assertEqual(mock_right.call_count, 2)
+			mock_left.assert_not_called()
+
+		mock_left.reset_mock()
+		mock_right.reset_mock()
+
+		# Worker moved left of main after a Task View reorder.
+		with mock.patch("desktop_utils.get_desktop_registry_data", return_value=([id_c, id_b, id_a], id_a)):
+			self.assertTrue(desktop_utils._navigate_to_guid(id_c))
+			self.assertEqual(mock_left.call_count, 2)
+			mock_right.assert_not_called()
+
+	@mock.patch("desktop_utils.time.sleep")
+	@mock.patch("desktop_utils.is_windows", return_value=True)
+	@mock.patch("desktop_utils.close_current_virtual_desktop", return_value=True)
+	@mock.patch("desktop_utils.switch_to_left_desktop", return_value=True)
+	@mock.patch("desktop_utils.switch_to_right_desktop", return_value=True)
+	def test_cleanup_with_guid_tracking_navigates_to_start_desktop(
+		self, mock_right, mock_left, mock_close, mock_is_win, mock_sleep
+	):
+		id_main = b"\x11" * 16
+		id_worker = b"\x22" * 16
+		desktop_utils._desktop_created = True
+		desktop_utils._on_worker_desktop = False
+		desktop_utils._start_desktop_id = id_main
+		desktop_utils._worker_desktop_id = id_worker
+
+		reg_states = [
+			([id_main, id_worker], id_main),
+			([id_main, id_worker], id_main),
+			([id_main], id_main),
+		]
+		with mock.patch("desktop_utils.get_desktop_registry_data", side_effect=reg_states):
+			with mock.patch.dict(os.environ, {"USE_VIRTUAL_DESKTOP": "true", "CLEANUP_VIRTUAL_DESKTOP": "true"}):
+				self.assertTrue(desktop_utils.cleanup_virtual_desktop())
+
+		self.assertEqual(mock_right.call_count, 1)
+		mock_close.assert_called_once()
+		self.assertFalse(desktop_utils._desktop_created)
+		self.assertFalse(desktop_utils._on_worker_desktop)
+		self.assertIsNone(desktop_utils._worker_desktop_id)
+
+	@mock.patch("desktop_utils.is_windows", return_value=True)
+	@mock.patch("desktop_utils.create_virtual_desktop", return_value=True)
+	@mock.patch("desktop_utils.time.sleep")
+	def test_prepare_records_start_and_worker_guids(self, mock_sleep, mock_create, mock_is_win):
+		id_main = b"\xaa" * 16
+		id_worker = b"\xbb" * 16
+		reg_states = [
+			([id_main], id_main),
+			([id_main], id_main),
+			([id_main, id_worker], id_worker),
+			([id_main, id_worker], id_worker),
+		]
+		with mock.patch("desktop_utils.get_desktop_registry_data", side_effect=reg_states):
+			with mock.patch.dict(os.environ, {"USE_VIRTUAL_DESKTOP": "true"}):
+				self.assertTrue(desktop_utils.prepare_desktop_before_launch())
+
+		self.assertEqual(desktop_utils._start_desktop_id, id_main)
+		self.assertEqual(desktop_utils._worker_desktop_id, id_worker)
+		self.assertEqual(desktop_utils._hops_to_worker, 1)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,6 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import launcher
 import launcher_controller as ctl
 import launcher_progress as progress
 import launcher_runtime as runtime
@@ -93,70 +92,18 @@ class LauncherControllerTests(unittest.TestCase):
 	def test_write_crash_log_creates_file(self) -> None:
 		with tempfile.TemporaryDirectory() as temp_dir:
 			path = os.path.join(temp_dir, "launcher_crash.log")
-			with mock.patch.object(launcher, "CRASH_LOG_FILE", path):
-				with mock.patch.object(launcher, "LOG_DIR", temp_dir):
-					launcher.write_crash_log(text="forced test crash")
+			with mock.patch.object(runtime, "CRASH_LOG_FILE", path):
+				with mock.patch.object(runtime, "LOG_DIR", temp_dir):
+					runtime.write_crash_log(text="forced test crash")
 			self.assertTrue(os.path.isfile(path))
 			with open(path, encoding="utf-8") as handle:
 				content = handle.read()
 			self.assertIn("forced test crash", content)
 
 
-class LauncherUsabilityTests(unittest.TestCase):
-	@classmethod
-	def setUpClass(cls) -> None:
-		if not os.environ.get("REWARDS_GUI_TESTS"):
-			raise unittest.SkipTest(
-				"opens a real Tk window; set REWARDS_GUI_TESTS=1 to run"
-			)
-		cls._icon_patch = mock.patch.object(launcher.theme, "load_header_icon", return_value=None)
-		cls._icon_patch.start()
-
-	@classmethod
-	def tearDownClass(cls) -> None:
-		if getattr(cls, "_icon_patch", None) is not None:
-			cls._icon_patch.stop()
-
-	def setUp(self) -> None:
-		self.app = launcher.LauncherApp()
-		self.app.withdraw()
-
-	def tearDown(self) -> None:
-		self.app._cancel_scheduled()
-		self.app.destroy()
-
-	def test_run_button_starts_enabled_when_preflight_passes(self) -> None:
-		with mock.patch.object(runtime, "preflight_issues", return_value=[]):
-			app = launcher.LauncherApp()
-			app.withdraw()
-			self.assertEqual(str(app.run_button.cget("state")), "normal")
-			app.destroy()
-
-	def test_run_button_disabled_when_preflight_fails(self) -> None:
-		with mock.patch.object(runtime, "preflight_issues", return_value=["Missing setup"]):
-			app = launcher.LauncherApp()
-			app.withdraw()
-			self.assertEqual(str(app.run_button.cget("state")), "disabled")
-			self.assertEqual(app.subtitle_label.cget("text"), "Missing setup")
-			app.destroy()
-
+class LauncherRuntimeTests(unittest.TestCase):
 	def test_main_script_path_exists(self) -> None:
-		self.assertTrue(os.path.isfile(launcher.MAIN_SCRIPT))
-
-	def test_run_log_appends_without_clearing(self) -> None:
-		self.app._insert_log_line("first run\n", None)
-		self.app._insert_log_line("second run\n", None)
-		content = self.app.log_text.get("1.0", "end")
-		self.assertIn("first run", content)
-		self.assertIn("second run", content)
-
-	def test_log_widget_trims_very_long_output(self) -> None:
-		for index in range(runtime.MAX_LOG_LINES + 50):
-			self.app._insert_log_line(f"line {index}\n", None)
-
-		content = self.app.log_text.get("1.0", "end")
-		self.assertNotIn("line 0\n", content)
-		self.assertIn(f"line {runtime.MAX_LOG_LINES + 49}", content)
+		self.assertTrue(os.path.isfile(runtime.MAIN_SCRIPT))
 
 	def test_read_log_tail_keeps_recent_bytes(self) -> None:
 		with tempfile.NamedTemporaryFile("wb", delete=False) as handle:
@@ -225,7 +172,10 @@ class LauncherUsabilityTests(unittest.TestCase):
 		self.assertIn("exit 1", runtime.extract_run_log(log_text, 2))
 
 	def test_ensure_visual_search_image_returns_true_when_file_exists(self) -> None:
-		with mock.patch("launcher_runtime.os.path.isfile", return_value=True):
+		with mock.patch(
+			"random_image_for_visual_search.ensure_visual_search_image",
+			return_value=__file__,
+		):
 			self.assertTrue(runtime.ensure_visual_search_image())
 
 	def test_build_run_command_uses_unbuffered_python(self) -> None:
@@ -289,58 +239,56 @@ class LauncherUsabilityTests(unittest.TestCase):
 		self.assertEqual(hint, runtime.EDGE_PROFILE_HINT)
 
 	def test_run_finished_sets_error_status_from_log(self) -> None:
-		self.app.controller._log_buffer = []
-		self.app.controller.run_count = 1
-		self.app.controller._progress_running = True
-		self.app.controller._process_log_text("\n=== Run #1 started 2026-01-01 12:00:00 ===\n", to_file=False)
-		self.app.controller._process_log_text("[FAIL] something broke\n", to_file=False)
-		self.app.controller.process = mock.Mock()
-		self.app.controller.process.poll.return_value = 1
-		self.app.controller._finish_run()
-		self.app.update_idletasks()
-		self.app.update()
-		self.assertEqual(self.app.status_label.cget("text"), "Done with 1 error — check log")
+		seen: list[ctl.LauncherSnapshot] = []
+		with tempfile.TemporaryDirectory() as temp_dir:
+			log_file = os.path.join(temp_dir, "runs.log")
+			self._assert_finish_status(seen, log_file)
+
+	def _assert_finish_status(self, seen: list, log_file: str) -> None:
+		with mock.patch.object(ctl, "RUN_LOG_FILE", log_file):
+			self._finish_and_check_status(seen)
+
+	def _finish_and_check_status(self, seen: list) -> None:
+		controller = ctl.LauncherController(on_state_changed=seen.append)
+		controller._log_buffer = []
+		controller.run_count = 1
+		controller._progress_running = True
+		controller._process_log_text("\n=== Run #1 started 2026-01-01 12:00:00 ===\n", to_file=False)
+		controller._process_log_text("[FAIL] something broke\n", to_file=False)
+		controller.process = mock.Mock()
+		controller.process.poll.return_value = 1
+		controller._finish_run()
+		self.assertTrue(seen)
+		self.assertEqual(seen[-1].status_text, "Done with 1 error — check log")
 
 	def test_edge_hint_appended_once_per_run(self) -> None:
-		self.app.controller._process_log_text(
+		controller = ctl.LauncherController()
+		controller._process_log_text(
 			"[FAIL] default: could not start Edge with this profile.\n",
 			to_file=False,
 		)
-		self.app.update_idletasks()
-		self.app.update()
-		first = self.app.log_text.get("1.0", "end")
-		self.app.controller._process_log_text(
+		controller._process_log_text(
 			"profile is already open in another Edge window\n",
 			to_file=False,
 		)
-		self.app.update_idletasks()
-		self.app.update()
-		second = self.app.log_text.get("1.0", "end")
-		self.assertEqual(first.count("Close other Edge windows"), 1)
-		self.assertEqual(second.count("Close other Edge windows"), 1)
+		joined = "".join(controller._log_buffer)
+		self.assertEqual(joined.count("Close other Edge windows"), 1)
 
-	def test_stop_run_disables_button_while_stopping(self) -> None:
-		self.app.controller.process = mock.Mock()
-		self.app.controller.process.poll.return_value = None
-		self.app.controller._run_finished_pending = True
+	def test_stop_run_marks_stopping_while_process_alive(self) -> None:
+		controller = ctl.LauncherController()
+		controller.process = mock.Mock()
+		controller.process.poll.return_value = None
+		controller._run_finished_pending = True
 
 		with mock.patch.object(runtime, "stop_run_process"):
-			self.app.controller.stop_run()
+			controller.stop_run()
 
-		self.assertTrue(self.app.controller._stopping)
-		self.assertEqual(str(self.app.stop_button.cget("state")), "disabled")
+		self.assertTrue(controller._stopping)
+		snapshot = controller.initial_snapshot()
+		self.assertFalse(snapshot.stop_enabled)
 
 
 class RunProgressTests(unittest.TestCase):
-	@classmethod
-	def setUpClass(cls) -> None:
-		cls._icon_patch = mock.patch.object(launcher.theme, "load_header_icon", return_value=None)
-		cls._icon_patch.start()
-
-	@classmethod
-	def tearDownClass(cls) -> None:
-		cls._icon_patch.stop()
-
 	def test_reset_marks_browser_pending(self) -> None:
 		run = progress.RunProgress()
 		run.reset()
@@ -355,6 +303,19 @@ class RunProgressTests(unittest.TestCase):
 		self.assertEqual(run.browser_state, "ok")
 		self.assertEqual(run.task_states["Bing daily set"].state, "running")
 		self.assertEqual(run.current_label(), "Bing daily set")
+
+	def test_logging_prefix_still_updates_the_running_step(self) -> None:
+		run = progress.RunProgress()
+		run.reset()
+		run.update_from_line("09:23:01 INFO     rewards_tasks: [STEP] Starting browser")
+		run.update_from_line("09:23:04 INFO     rewards_tasks: [STEP] Bing daily set")
+		run.update_from_line("09:24:10 INFO     rewards_tasks: [OK] Bing daily set")
+		run.update_from_line("09:24:11 INFO     rewards_tasks: Search points before: 18/30")
+		self.assertEqual(run.browser_state, "ok")
+		self.assertEqual(run.task_states["Bing daily set"].state, "ok")
+		self.assertEqual(run.task_states["Explore on Bing"].state, "running")
+		self.assertEqual(run.search_quota, "18/30")
+		self.assertEqual(run.progress_summary(), "2 of 7 complete")
 
 	def test_ok_advances_to_next_task(self) -> None:
 		run = progress.RunProgress()
@@ -389,19 +350,6 @@ class RunProgressTests(unittest.TestCase):
 		run.update_from_line("[STEP] Starting browser")
 		run.update_from_line("[OK] Bing daily set")
 		self.assertEqual(run.progress_summary(), "1 of 7 complete")
-
-	def test_launcher_builds_progress_widgets(self) -> None:
-		if not os.environ.get("REWARDS_GUI_TESTS"):
-			self.skipTest("opens a real Tk window; set REWARDS_GUI_TESTS=1 to run")
-		app = launcher.LauncherApp()
-		app.withdraw()
-		try:
-			self.assertTrue(hasattr(app, "progress_frame"))
-			self.assertIn(task_steps.BROWSER_STEP, app._progress_row_widgets)
-			self.assertTrue(hasattr(app, "log_toggle_button"))
-		finally:
-			app._cancel_scheduled()
-			app.destroy()
 
 
 if __name__ == "__main__":

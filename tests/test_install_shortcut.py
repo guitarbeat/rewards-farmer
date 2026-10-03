@@ -56,6 +56,7 @@ class InstallShortcutTests(unittest.TestCase):
 			self.assertIn("[Desktop Entry]", body)
 			self.assertIn("Name=Rewards Farmer", body)
 			self.assertIn("Exec=", body)
+			self.assertIn("Terminal=true", body)
 
 	def test_icon_prefers_png_off_windows(self) -> None:
 		with mock.patch.object(shortcut.sys, "platform", "linux"):
