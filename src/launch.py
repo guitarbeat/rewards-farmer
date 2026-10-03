@@ -52,7 +52,19 @@ def main() -> int:
 	os.makedirs(os.path.join(REPO_ROOT, "logs"), exist_ok=True)
 
 	python = _ensure_env()
-	# Replace this process so the TUI keeps the same terminal.
+	same_interpreter = os.path.normcase(os.path.abspath(python)) == os.path.normcase(os.path.abspath(sys.executable))
+	if same_interpreter:
+		# Imported only after we know this process is the venv interpreter.
+		# A system Python used to bootstrap setup does not have Textual installed.
+		sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
+		import launcher_tui
+
+		return launcher_tui.main()
+
+	if sys.platform == "win32":
+		# os.execv on Windows does not keep a usable console for a full-screen TUI.
+		return subprocess.call([python, LAUNCHER], cwd=REPO_ROOT)
+
 	os.execv(python, [python, LAUNCHER])
 	return 0
 

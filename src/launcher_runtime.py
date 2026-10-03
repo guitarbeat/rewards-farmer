@@ -12,6 +12,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TextIO
 
+try:
+	import fcntl
+except ImportError:
+	fcntl = None  # type: ignore[assignment]
+
+try:
+	import msvcrt
+except ImportError:
+	msvcrt = None  # type: ignore[assignment]
+
 import accounts
 import launcher_progress
 
@@ -196,35 +206,80 @@ def clear_stale_lock() -> None:
 		pass
 
 
+def launcher_ui_is_open() -> bool:
+	"""True when a live launcher process holds the single-instance lock."""
+	clear_stale_lock()
+	return _read_lock_pid() is not None
+
+
+def _lock_file(lock_handle: TextIO) -> bool:
+	if sys.platform == "win32":
+		if msvcrt is None:
+			return False
+		try:
+			lock_handle.seek(0)
+			msvcrt.locking(lock_handle.fileno(), msvcrt.LK_NBLCK, 1)
+		except OSError:
+			return False
+		return True
+
+	if fcntl is None:
+		return False
+	try:
+		fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+	except BlockingIOError:
+		return False
+	return True
+
+
+def _unlock_file(lock_handle: TextIO) -> None:
+	if sys.platform == "win32":
+		if msvcrt is None:
+			return
+		try:
+			lock_handle.seek(0)
+			msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)
+		except OSError:
+			pass
+		return
+
+	if fcntl is None:
+		return
+	try:
+		fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+	except OSError:
+		pass
+
+
 def acquire_single_instance() -> TextIO | None:
 	"""Return an open lock handle, or None if another launcher is already open."""
 	os.makedirs(LOG_DIR, exist_ok=True)
 	clear_stale_lock()
 	lock_handle = open(LOCK_FILE, "a+", encoding="utf-8")
 
-	if sys.platform == "win32":
-		import msvcrt
-
-		try:
-			lock_handle.seek(0)
-			msvcrt.locking(lock_handle.fileno(), msvcrt.LK_NBLCK, 1)
-		except OSError:
-			lock_handle.close()
-			return None
-	else:
-		import fcntl
-
-		try:
-			fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-		except BlockingIOError:
-			lock_handle.close()
-			return None
+	if not _lock_file(lock_handle):
+		lock_handle.close()
+		return None
 
 	lock_handle.seek(0)
 	lock_handle.truncate()
 	lock_handle.write(str(os.getpid()))
 	lock_handle.flush()
 	return lock_handle
+
+
+def release_single_instance(lock_handle: TextIO | None) -> None:
+	if lock_handle is None:
+		return
+	_unlock_file(lock_handle)
+	try:
+		lock_handle.close()
+	except OSError:
+		pass
+	try:
+		os.remove(LOCK_FILE)
+	except OSError:
+		pass
 
 
 def read_log_tail(path: str, *, max_bytes: int = LOG_TAIL_BYTES) -> str:

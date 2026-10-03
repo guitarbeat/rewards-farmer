@@ -10,6 +10,7 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import launcher_tui
+import daily_schedule
 from textual.widgets import Button, ListItem, RichLog, Static
 
 _PAST_RUN = (
@@ -36,7 +37,7 @@ class LauncherTuiTests(unittest.IsolatedAsyncioTestCase):
 		app = self._app()
 		async with app.run_test(size=(100, 40)) as pilot:
 			await pilot.pause()
-			self.assertEqual(str(app.query_one("#subtitle", Static).content), "Ready to farm")
+			self.assertEqual(app.sub_title, "Ready to farm")
 			self.assertIn("Ready to run", str(app.query_one("#status", Static).content))
 			self.assertFalse(app.query_one("#run", Button).disabled)
 			self.assertTrue(app.query_one("#stop", Button).disabled)
@@ -47,7 +48,7 @@ class LauncherTuiTests(unittest.IsolatedAsyncioTestCase):
 		async with app.run_test(size=(100, 40)) as pilot:
 			await pilot.pause()
 			self.assertTrue(app.query_one("#run", Button).disabled)
-			self.assertEqual(str(app.query_one("#subtitle", Static).content), "Missing data-dir")
+			self.assertEqual(app.sub_title, "Missing data-dir")
 
 	async def test_history_row_opens_that_run_log(self) -> None:
 		app = self._app(log_tail=_PAST_RUN)
@@ -79,6 +80,19 @@ class LauncherTuiTests(unittest.IsolatedAsyncioTestCase):
 			status = app.query_one("#status", Static)
 			self.assertIn("Starting browser", str(status.content))
 			self.assertLess(status.region.y, app.size.height)
+
+	async def test_daily_key_shows_the_learned_window(self) -> None:
+		app = self._app()
+		plan = daily_schedule.DailyPlan(9 * 60 + 15, 75, 3, False)
+		result = daily_schedule.InstallResult(daily_schedule.status_line(plan), plan)
+		with mock.patch.object(daily_schedule, "install_daily_trigger", return_value=result):
+			async with app.run_test(size=(80, 24)) as pilot:
+				await pilot.pause()
+				await pilot.press("d")
+				await pilot.pause()
+				text = str(app.query_one("#schedule", Static).content)
+				self.assertIn("09:15", text)
+				self.assertIn("from 3 runs", text)
 
 	async def test_stop_while_idle_leaves_run_enabled(self) -> None:
 		app = self._app()

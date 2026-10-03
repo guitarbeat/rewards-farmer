@@ -2,20 +2,39 @@
 
 from __future__ import annotations
 
+import sys
+from datetime import datetime
+
+import daily_schedule
 import launcher_controller as controller
 import launcher_runtime as runtime
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.widgets import Button, Footer, Header, Label, ListItem, ListView, RichLog, Static
 
-_ICONS = {
+_UNICODE_ICONS = {
 	"pending": "○",
 	"running": "●",
 	"ok": "✓",
 	"skip": "–",
 	"fail": "✕",
 }
+_ASCII_ICONS = {
+	"pending": "[ ]",
+	"running": "[>]",
+	"ok": "[ok]",
+	"skip": "[-]",
+	"fail": "[x]",
+}
+
+
+def _icons() -> dict[str, str]:
+	encoding = (getattr(sys.stdout, "encoding", None) or "").lower().replace("-", "")
+	if encoding in {"utf8", "utf16", "cp65001"}:
+		return _UNICODE_ICONS
+	return _ASCII_ICONS
 
 
 class RewardsFarmerApp(App):
@@ -25,20 +44,29 @@ class RewardsFarmerApp(App):
 	CSS = """
 	Screen {
 		layout: vertical;
+		overflow-y: hidden;
 	}
 
-	#subtitle, #setup, #status, #progress-summary, #history-count {
+	#setup, #schedule, #status, #progress-summary, #history-count {
 		height: auto;
 		padding: 0 1;
 	}
 
-	#subtitle {
+	#schedule {
 		color: $text-muted;
 	}
 
-	#setup {
-		color: $text-muted;
-		margin-bottom: 1;
+	ToastRack {
+		margin-bottom: 0;
+		height: auto;
+	}
+
+	Toast {
+		margin-top: 0;
+		padding: 0 1;
+		height: 1;
+		width: 1fr;
+		max-width: 100%;
 	}
 
 	#actions {
@@ -52,9 +80,14 @@ class RewardsFarmerApp(App):
 
 	#progress {
 		height: auto;
-		max-height: 12;
+		max-height: 8;
 		padding: 0 1;
-		margin-bottom: 1;
+	}
+
+	#history {
+		height: 5;
+		margin: 0 1;
+		border: solid $primary;
 	}
 
 	.step {
@@ -75,12 +108,6 @@ class RewardsFarmerApp(App):
 
 	.step-fail {
 		color: $error;
-	}
-
-	#history {
-		height: 8;
-		margin: 0 1 1 1;
-		border: solid $primary;
 	}
 
 	#log-panel {
@@ -121,6 +148,9 @@ class RewardsFarmerApp(App):
 		Binding("ctrl+enter", "run", "Run", show=False),
 		Binding("escape", "stop", "Stop"),
 		Binding("l", "toggle_log", "Log"),
+		Binding("d", "arm_daily", "Daily"),
+		Binding("ctrl+d", "remove_daily", "Undaily", show=False),
+		Binding("ctrl+c", "quit_app", "Quit", show=False),
 		Binding("q", "quit_app", "Quit"),
 	]
 
@@ -137,17 +167,19 @@ class RewardsFarmerApp(App):
 		self._viewing_run: int | None = None
 		self._log_visible = False
 		self._quit_after_stop = False
+		self._schedule_line = daily_schedule.status_line(None)
 
 	def compose(self) -> ComposeResult:
 		yield Header()
-		yield Static("", id="subtitle")
 		yield Static("", id="setup")
+		yield Static("", id="schedule")
 		with Horizontal(id="actions"):
 			yield Button("Run", id="run", variant="success")
 			yield Button("Stop", id="stop", variant="error", disabled=True)
-			yield Button("Open logs", id="open-logs")
-			yield Button("Open profile", id="open-profile")
-			yield Button("Clear log", id="clear-log")
+			yield Button("Logs", id="open-logs")
+			yield Button("Profile", id="open-profile")
+			yield Button("Clear", id="clear-log")
+			yield Button("Daily", id="daily")
 		yield Static("Run progress", id="progress-summary")
 		yield Vertical(id="progress")
 		yield Static("Past runs", id="history-count")
@@ -158,28 +190,56 @@ class RewardsFarmerApp(App):
 		yield Footer()
 
 	def on_mount(self) -> None:
-		self.query_one("#log-panel").display = False
+		self._log_visible = True
+		self.query_one("#log-panel").display = True
 		for line, tag in self.controller.initial_log_lines():
 			self._pending_logs.append((line, tag))
 		self._snapshot = self.controller.initial_snapshot()
+		self._schedule_line = daily_schedule.status_line(daily_schedule.load_plan())
 		self._flush_logs()
 		self._paint()
-		self.set_interval(0.1, self._poll)
+		self.set_interval(0.25, self._poll)
+		self.set_interval(30, self._maybe_daily)
 
 	def _on_log_line(self, line: str, tag: str | None) -> None:
 		self._pending_logs.append((line, tag))
 
 	def _on_state_changed(self, snapshot: controller.LauncherSnapshot) -> None:
 		self._snapshot = snapshot
+		if self.is_running:
+			self._paint()
 
 	def _poll(self) -> None:
-		if not self.is_running or not self.query("#subtitle"):
+		if not self.is_running or not self.query("#setup"):
 			return
 		self.controller.poll_output()
 		self._flush_logs()
 		self._paint()
 		if self._quit_after_stop and not self.controller.is_run_active():
 			self.exit()
+
+	def _maybe_daily(self) -> None:
+		if not self.is_running or self.controller.is_run_active():
+			return
+		plan = daily_schedule.load_plan()
+		if not daily_schedule.autostart_due(
+			datetime.now(),
+			plan,
+			claimed=daily_schedule.claimed_today(),
+			unfinished=daily_schedule.unfinished_accounts() if plan is not None else False,
+		):
+			return
+		if not daily_schedule.claim_today():
+			return
+		error = self.controller.start_run()
+		if error:
+			daily_schedule.release_claim()
+			self.notify(error, severity="error", timeout=8)
+			return
+		self._set_log_visible(True)
+		self.notify("Starting today's daily run. Esc stops it.", timeout=5)
+		self._schedule_line = daily_schedule.status_line(daily_schedule.load_plan())
+		self._paint()
 
 	def _flush_logs(self) -> None:
 		if self._viewing_run is not None or not self._pending_logs:
@@ -193,37 +253,50 @@ class RewardsFarmerApp(App):
 
 	def _paint(self) -> None:
 		snapshot = self._snapshot
-		if snapshot is None:
+		if snapshot is None or not self.query("#setup"):
 			return
 
-		self.query_one("#subtitle", Static).update(snapshot.subtitle)
-		self.query_one("#setup", Static).update(snapshot.setup_strip)
-		self.query_one("#progress-summary", Static).update(
-			f"Run progress  {snapshot.progress_summary}"
-		)
-		status = self.query_one("#status", Static)
-		status.update(f"{snapshot.status_text}   {snapshot.run_count_label}")
-		status.set_classes(f"tone-{snapshot.status_tone}")
+		try:
+			self.sub_title = snapshot.subtitle
+			self.query_one("#setup", Static).update(snapshot.setup_strip)
+			self.query_one("#schedule", Static).update(self._schedule_line)
+			summary = snapshot.progress_summary
+			if snapshot.running:
+				summary = f"{summary}  ·  {snapshot.status_text}"
+			self.query_one("#progress-summary", Static).update(f"Run progress  {summary}")
+			status = self.query_one("#status", Static)
+			status.update(f"{snapshot.status_text}   {snapshot.run_count_label}")
+			status.set_classes(f"tone-{snapshot.status_tone}")
 
-		run = self.query_one("#run", Button)
-		run.disabled = not snapshot.run_enabled
-		run.label = snapshot.run_button_text
-		self.query_one("#stop", Button).disabled = not snapshot.stop_enabled
+			run = self.query_one("#run", Button)
+			run.disabled = not snapshot.run_enabled
+			run.label = snapshot.run_button_text
+			self.query_one("#stop", Button).disabled = not snapshot.stop_enabled
 
-		self._paint_progress(snapshot.progress_rows)
-		self._paint_history(snapshot.run_history)
+			self._paint_progress(snapshot.progress_rows)
+			self._paint_history(snapshot.run_history)
+		except NoMatches:
+			return
 
 	def _paint_progress(self, rows) -> None:
 		key = tuple((row.name, row.state, row.detail) for row in rows)
 		if key == self._progress_key:
 			return
-		self._progress_key = key
 		box = self.query_one("#progress", Vertical)
-		box.remove_children()
-		for row in rows:
-			icon = _ICONS.get(row.state, _ICONS["pending"])
+		children = list(box.children)
+		if len(children) != len(rows):
+			box.remove_children()
+			box.mount(*(Static("", classes="step") for _row in rows))
+			children = list(box.children)
+		if len(children) != len(rows):
+			return
+		icons = _icons()
+		for widget, row in zip(children, rows):
+			icon = icons.get(row.state, icons["pending"])
 			detail = f"  {row.detail}" if row.detail else ""
-			box.mount(Static(f"{icon} {row.name}{detail}", classes=f"step step-{row.state}"))
+			widget.update(f"{icon} {row.name}{detail}")
+			widget.set_classes(f"step step-{row.state}")
+		self._progress_key = key
 
 	def _paint_history(self, entries: list[dict]) -> None:
 		count = self.query_one("#history-count", Static)
@@ -275,7 +348,30 @@ class RewardsFarmerApp(App):
 		if error:
 			title = "Setup required" if any(word in error for word in ("Setup", "Missing", "data-dir")) else "Could not start"
 			self.notify(f"{title}\n{error}", severity="error", timeout=8)
+			return
+		daily_schedule.claim_today()
+		self._set_log_visible(True)
 		self._paint()
+
+	def action_arm_daily(self) -> None:
+		try:
+			result = daily_schedule.install_daily_trigger()
+		except RuntimeError as exc:
+			self.notify(str(exc), severity="error", timeout=8)
+			return
+		self._schedule_line = result.status_line
+		self.query_one("#schedule", Static).update(result.status_line)
+		self.notify("Daily trigger armed.", timeout=4)
+
+	def action_remove_daily(self) -> None:
+		try:
+			message = daily_schedule.remove_daily_trigger()
+		except RuntimeError as exc:
+			self.notify(str(exc), severity="error", timeout=8)
+			return
+		self._schedule_line = daily_schedule.status_line(None)
+		self.query_one("#schedule", Static).update(self._schedule_line)
+		self.notify(message, timeout=4)
 
 	def action_stop(self) -> None:
 		self.controller.stop_run()
@@ -308,6 +404,8 @@ class RewardsFarmerApp(App):
 			self._history_key = ""
 			self.query_one("#log", RichLog).clear()
 			self._paint()
+		elif button_id == "daily":
+			self.action_arm_daily()
 
 	def on_list_view_selected(self, event: ListView.Selected) -> None:
 		name = event.item.name or ""
@@ -318,11 +416,17 @@ class RewardsFarmerApp(App):
 
 def main() -> int:
 	runtime.install_crash_hooks()
+	lock = runtime.acquire_single_instance()
+	if lock is None:
+		print("Rewards Farmer is already open in another terminal.", file=sys.stderr)
+		return 1
 	try:
 		RewardsFarmerApp().run()
 	except Exception as exc:
 		runtime.write_crash_log(exc)
 		raise
+	finally:
+		runtime.release_single_instance(lock)
 	return 0
 
 

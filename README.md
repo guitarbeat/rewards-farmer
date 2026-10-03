@@ -38,7 +38,11 @@ You must have Python 3.12+ and Poetry installed.
 | Windows | `Setup.bat` | `Launch.bat` | `Rewards Farmer.lnk` |
 | macOS / Linux | `./setup.sh` | `./launch.sh` | `.command` / `.desktop` |
 
-`Launch.bat` and `./launch.sh` open a terminal UI in that console: run, stop, progress, past runs, and the log. The Linux shortcut sets `Terminal=true` so the desktop entry has a console.
+`Launch.bat` and `./launch.sh` open a terminal UI in that console: run, stop, progress, past runs, and the log. Keys: `r` run, `Esc` stop, `l` log, `d` arm the daily trigger, `Ctrl+D` remove it, `q` quit. The Linux shortcut sets `Terminal=true` so the desktop entry has a console.
+
+Press `d` once to install a daily trigger. The time is the middle of your successful runs, kept between 08:15 and 20:15, then a stable minute inside a 75-minute window so it does not fire on the hour. Windows Task Scheduler uses "run as soon as possible after a missed start", systemd uses `Persistent=true`, and the macOS agent also runs at login. If today's accounts are already in `logs/completed_profiles.txt`, the trigger exits. If this terminal UI is open, the trigger leaves the run to the UI so the step list updates on screen. The UI starts that run itself during the window and for three hours after it.
+
+`python src/daily_schedule.py --install` and `--remove` do the same thing without the UI.
 
 Or run the shared Python entries directly: `python src/setup_env.py` then `python src/launch.py`. Setup also installs/refreshes the desktop shortcut via `src/install_shortcut.py`.
 
