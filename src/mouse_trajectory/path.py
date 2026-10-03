@@ -37,7 +37,10 @@ def get_final_path_from_real_time(
 	def final_path_function(t: float) -> Point:
 		if t < 0:
 			return start
-		elif t > movement_time:
+		elif t >= movement_time:
+			# Not just t > movement_time: the sigmoid below is asymptotic, so a
+			# sample taken exactly at movement_time still lands short of the
+			# target and the move has to end here instead.
 			return end
 
 		normalized_t = (t / movement_time) * 4.5

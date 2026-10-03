@@ -51,6 +51,7 @@ document.dispatchEvent(new Event('visibilitychange'));
 
 		for handle in list(self.driver.window_handles):
 			if handle not in exceptions and handle not in self.problematic_tabs:
+				tab_url = None
 				try:
 					self.driver.switch_to.window(handle)
 

@@ -1,4 +1,4 @@
-"""Visual search streak upload."""
+"""Visual search task mixin."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import time
 
 from sites.ms_rewards.paths import VISUAL_SEARCH_IMAGE_PATH
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("rewards_tasks")
 
 
 class VisualSearchTasks:
@@ -22,18 +22,22 @@ class VisualSearchTasks:
 			random_image_for_visual_search.get_random_image()
 
 		self.wait_for_then_click(self.elements.get_open_visual_search_sidebar)
+		self.progress = "opened the sidebar"
 
 		self.wait_for_then_click(self.elements.get_search_now_link_from_visual_search_sidebar)
 
 		self.tab_utils.switch_to_other_tab()
+		self.progress = "opened the visual search page"
 
 		self.wait_for_then_click(self.elements.get_visual_search_button)
 
 		file_input = self.wait_for_element(self.elements.get_visual_search_file_input)
 
 		file_input.send_keys(VISUAL_SEARCH_IMAGE_PATH)
+		self.progress = "uploaded the image"
 
 		time.sleep(random.uniform(3, 5))
 
 		self.tab_utils.switch_to_other_tab()
 		self.tab_utils.close_all_other_tabs()
+

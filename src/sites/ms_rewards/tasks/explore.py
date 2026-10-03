@@ -1,4 +1,4 @@
-"""Explore on Bing card searches."""
+"""Explore on Bing task mixin."""
 
 from __future__ import annotations
 
@@ -9,8 +9,9 @@ import time
 import queries
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.remote.webelement import WebElement
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("rewards_tasks")
 
 
 class ExploreTasks:
@@ -26,7 +27,10 @@ class ExploreTasks:
 			# must not produce.
 			raise NoSuchElementException("no Explore on Bing section in this UI variant")
 
-		for card in explore_on_bing_links:
+		total = len(explore_on_bing_links)
+		self.progress = f"searched 0 of {total} cards"
+
+		for number, card in enumerate(explore_on_bing_links, start=1):
 			desc = self.elements.extract_card_descriptions(card)
 			query = queries.search_query_for_task(desc)
 
@@ -44,7 +48,9 @@ class ExploreTasks:
 			self.tab_utils.switch_to_other_tab()
 			self.tab_utils.close_all_other_tabs()
 
-		time.sleep(random.uniform(1, 2))  # allow card statuses to update
+			self.progress = f"searched {number} of {total} cards"
+
+		time.sleep(random.uniform(1, 2)) # allow card statuses to update
 
 		for card in explore_on_bing_links:
 			if not self.elements.card_is_complete(card):
@@ -52,3 +58,4 @@ class ExploreTasks:
 					"Explore on Bing Card [desc=%r] is not complete after searching. Please check manually.",
 					self.elements.extract_card_descriptions(card)
 				)
+

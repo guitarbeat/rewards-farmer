@@ -91,8 +91,13 @@ class MouseUtils:
 		)
 		max_x, max_y = int(viewport[0]) - 2, int(viewport[1]) - 2
 
-		while (current_time := time.monotonic()) < end_time:
-			t = current_time - start_time
+		while True:
+			current_time = time.monotonic()
+
+			# Clamped, because the loop is driven by wall clock: without this the
+			# last sample is taken an iteration short of move_time and the pointer
+			# never lands on the target.
+			t = min(current_time - start_time, move_time)
 			point = path_function(t)
 
 			point = (
@@ -112,6 +117,9 @@ class MouseUtils:
 				except JavascriptException:  # some uninitialization has happened, reinitialize the cursor visualization
 					self.reinitialize()
 					self.driver.execute_script(f"window.moveVisualCursor({point[0]}, {point[1]});")
+
+			if current_time >= end_time:
+				break
 
 	def wheel_scroll_element_into_view(self, element: WebElement, max_wheel_events: int = 60):
 		"""Scroll the element into the viewport with simulated wheel input.

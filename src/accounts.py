@@ -14,9 +14,12 @@ import os
 import re
 from dataclasses import dataclass
 
-from constants import USER_DATA_DIR, PROFILE_NAME
+from constants import DEFAULT_ROOT_DATA_DIR
 
-ENV_VAR = "REWARDS_ACCOUNTS"
+ACCOUNTS_ENV_VAR = "REWARDS_ACCOUNTS"
+DATA_DIR_ENV_VAR = "USER_DATA_DIR"
+
+PROFILE_NAME = "Default"
 
 # Names become directory names, so keep them to something a filesystem and a
 # command line both handle without quoting. The character set alone is not
@@ -49,19 +52,20 @@ def discover_named_accounts() -> list[str]:
 	use the default single-profile behaviour. Edge component folders such as
 	"Ad Blocking" are ignored.
 	"""
-	if not os.path.isdir(USER_DATA_DIR):
+	root = os.environ.get(DATA_DIR_ENV_VAR, DEFAULT_ROOT_DATA_DIR)
+	if not os.path.isdir(root):
 		return []
 
-	if is_edge_user_data_dir(USER_DATA_DIR):
+	if is_edge_user_data_dir(root):
 		return []
 
 	names: list[str] = []
 
-	for entry in sorted(os.listdir(USER_DATA_DIR)):
+	for entry in sorted(os.listdir(root)):
 		if not is_valid_account_name(entry):
 			continue
 
-		path = os.path.join(USER_DATA_DIR, entry)
+		path = os.path.join(root, entry)
 
 		if is_edge_user_data_dir(path):
 			names.append(entry)
@@ -79,26 +83,39 @@ class Account:
 
 	@property
 	def is_default(self) -> bool:
-		return self.user_data_dir == USER_DATA_DIR
+		return self.user_data_dir == os.environ.get(DATA_DIR_ENV_VAR, DEFAULT_ROOT_DATA_DIR)
 
+def directory_name_is_valid(name: str) -> bool:
+	"""Whether a name is usable as a directory name.
+
+	Does not check whether the directory exists, only that the name is safe to
+	use as a directory name.
+	"""
+
+	# The trailing dot is not cosmetic. Win32 strips one off a path component
+	# and python's normalisation does not, so such a name means a different
+	# directory than it reads as: "work." is "work", and "..." is the profile
+	# directory itself. Either way two entries end up sharing one profile,
+	# which is the one thing this module exists to prevent.
+	return bool(SAFE_NAME.match(name)) and name not in RESERVED_NAMES and not name.endswith(".")
 
 def _named(name: str) -> Account:
 	# Each account gets its own directory under the configured one, so the
 	# existing data-dir stays where it is and the new ones sit beside the
 	# profile it already holds.
-	user_data_dir = os.path.join(USER_DATA_DIR, name)
+	user_data_dir = os.path.join(os.environ.get(DATA_DIR_ENV_VAR, DEFAULT_ROOT_DATA_DIR), name)
 
 	# The name passed the character check, but that only constrains the
 	# characters, not where they end up pointing. Confirm against the resolved
 	# path, which is the thing Edge is actually handed. realpath rather than
 	# abspath, so a link or a junction under the profile directory is followed
 	# to where it really goes instead of being taken at face value.
-	root = os.path.realpath(USER_DATA_DIR)
+	root = os.path.realpath(os.environ.get(DATA_DIR_ENV_VAR, DEFAULT_ROOT_DATA_DIR))
 	resolved = os.path.realpath(user_data_dir)
 
 	if os.path.commonpath([root, resolved]) != root or resolved == root:
 		raise ValueError(
-			f"{ENV_VAR} entry {name!r} resolves outside the profile directory"
+			f"{ACCOUNTS_ENV_VAR} entry {name!r} resolves outside the profile directory"
 		)
 
 	return Account(
@@ -107,6 +124,14 @@ def _named(name: str) -> Account:
 		profile_name=PROFILE_NAME,
 	)
 
+def get_default_account() -> Account:
+	"""The account used when REWARDS_ACCOUNTS is unset or empty."""
+
+	return Account(
+		name="default",
+		user_data_dir=os.environ.get(DATA_DIR_ENV_VAR, DEFAULT_ROOT_DATA_DIR),
+		profile_name=PROFILE_NAME,
+	)
 
 def configured() -> list[Account]:
 	"""Accounts for this run, in order.
@@ -114,29 +139,24 @@ def configured() -> list[Account]:
 	Raises ValueError on a name that cannot be a directory, rather than
 	silently creating something surprising next to the real profiles.
 	"""
-	raw = os.environ.get(ENV_VAR, "").strip()
+	raw = os.environ.get(ACCOUNTS_ENV_VAR, "").strip()
 
 	if not raw:
-		return [Account(name="default", user_data_dir=USER_DATA_DIR, profile_name=PROFILE_NAME)]
+		return [get_default_account()]
 
 	names = [part.strip() for part in raw.split(",")]
 	names = [name for name in names if name]
 
 	if not names:
-		return [Account(name="default", user_data_dir=USER_DATA_DIR, profile_name=PROFILE_NAME)]
+		return [get_default_account()]
 
 	seen: set[str] = set()
 	accounts: list[Account] = []
 
 	for name in names:
-		# The trailing dot is not cosmetic. Win32 strips one off a path
-		# component and python's normalisation does not, so such a name means a
-		# different directory than it reads as: "work." is "work", and "..." is
-		# the profile directory itself. Either way two entries end up sharing
-		# one profile, which is the one thing this module exists to prevent.
-		if not is_valid_account_name(name) or name in RESERVED_NAMES or name.endswith("."):
+		if not directory_name_is_valid(name):
 			raise ValueError(
-				f"{ENV_VAR} entry {name!r} is not usable as a directory name; "
+				f"{ACCOUNTS_ENV_VAR} entry {name!r} is not usable as a directory name; "
 				"use letters, digits, dot, dash or underscore, and do not end in a dot"
 			)
 

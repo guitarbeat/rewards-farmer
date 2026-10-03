@@ -7,6 +7,8 @@ visual_search.json
 Todo.md
 data-dir/
 .venv/
+.venv*
 logs/
 .last_run
 __pycache__/
+.env

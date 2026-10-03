@@ -31,6 +31,7 @@ from mouse_trajectory.timing import (
 	get_path_with_transformed_velo,
 	logistic_sigmoid,
 )
+from selenium.webdriver.common.actions.action_builder import ActionBuilder
 
 __all__ = [
 	"Point",
@@ -52,4 +53,5 @@ __all__ = [
 	"get_final_path_with_fitts_law",
 	"choose_target_in_element",
 	"MouseUtils",
+	"ActionBuilder",
 ]

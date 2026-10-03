@@ -28,9 +28,9 @@ from selenium.common.exceptions import (
 )
 
 import accounts
+import browser
 import main
 import site_registry
-from constants import USER_DATA_DIR
 
 # Names that have to be refused, with the reason each one is not simply a
 # directory sitting under data-dir.
@@ -52,9 +52,9 @@ REFUSED_NAMES = [
 def accounts_for(value):
 	"""configured() under a given REWARDS_ACCOUNTS, or ValueError."""
 	if value is None:
-		os.environ.pop(accounts.ENV_VAR, None)
+		os.environ.pop(accounts.ACCOUNTS_ENV_VAR, None)
 	else:
-		os.environ[accounts.ENV_VAR] = value
+		os.environ[accounts.ACCOUNTS_ENV_VAR] = value
 
 	return accounts.configured()
 
@@ -63,7 +63,7 @@ class EnvironmentTestCase(unittest.TestCase):
 	"""Restores everything these tests reach into, so ordering cannot matter."""
 
 	def setUp(self):
-		self.addCleanup(os.environ.pop, accounts.ENV_VAR, None)
+		self.addCleanup(os.environ.pop, accounts.ACCOUNTS_ENV_VAR, None)
 
 
 class TestAccountConfiguration(EnvironmentTestCase):
@@ -71,7 +71,7 @@ class TestAccountConfiguration(EnvironmentTestCase):
 		configured = accounts_for(None)
 
 		self.assertEqual([a.name for a in configured], ["default"])
-		self.assertEqual(configured[0].user_data_dir, USER_DATA_DIR)
+		self.assertEqual(configured[0].user_data_dir, os.environ.get(accounts.DATA_DIR_ENV_VAR, accounts.DEFAULT_ROOT_DATA_DIR))
 		self.assertTrue(configured[0].is_default)
 
 	def test_blank_falls_back_to_the_single_profile(self):
@@ -110,7 +110,7 @@ class TestAccountConfiguration(EnvironmentTestCase):
 		self.assertEqual(len({os.path.realpath(a.user_data_dir) for a in named}), 2)
 
 	def test_every_directory_sits_under_the_profile_directory(self):
-		root = os.path.realpath(USER_DATA_DIR)
+		root = os.path.realpath(os.environ.get(accounts.DATA_DIR_ENV_VAR, accounts.DEFAULT_ROOT_DATA_DIR))
 
 		for account in accounts_for("personal,spare"):
 			with self.subTest(account=account.name):
@@ -126,7 +126,7 @@ class TestEdgeOptions(EnvironmentTestCase):
 		seen = []
 
 		for account in accounts_for("personal,spare"):
-			arguments = main.build_options(account).arguments
+			arguments = browser.build_options(account).arguments
 			user_data = [a for a in arguments if a.startswith("--user-data-dir=")]
 			profile = [a for a in arguments if a.startswith("--profile-directory=")]
 
@@ -218,9 +218,9 @@ class TestFailureIsolation(RunLoopTestCase):
 	def setUp(self):
 		super().setUp()
 
-		edge = main.webdriver.Edge
+		edge = browser.webdriver.Edge
 		resolve = site_registry.resolve
-		self.addCleanup(setattr, main.webdriver, "Edge", edge)
+		self.addCleanup(setattr, browser.webdriver, "Edge", edge)
 		self.addCleanup(setattr, site_registry, "resolve", resolve)
 
 	def _install(self, fail_at, exc, started, quit_cleanly):
@@ -230,7 +230,7 @@ class TestFailureIsolation(RunLoopTestCase):
 			return os.path.basename(flag.split("=", 1)[1])
 
 		class Driver:
-			def __init__(self, options):
+			def __init__(self, options, service=None):
 				self.name = account_of(options)
 				started.append(self.name)
 
@@ -260,7 +260,7 @@ class TestFailureIsolation(RunLoopTestCase):
 		def resolve(site_key=None):
 			return "ms_rewards", "MS Rewards (Bing)", create_runner
 
-		main.webdriver.Edge = Driver
+		browser.webdriver.Edge = Driver
 		site_registry.resolve = resolve
 
 	def test_the_remaining_accounts_still_run(self):
@@ -316,7 +316,7 @@ class TestTwoRealProfiles(EnvironmentTestCase):
 	def identity_of(self, account):
 		from selenium import webdriver
 
-		driver = webdriver.Edge(options=main.build_options(account))
+		driver = webdriver.Edge(options=browser.build_options(account))
 
 		try:
 			driver.get("https://www.bing.com")
@@ -349,10 +349,11 @@ class TestTwoRealProfiles(EnvironmentTestCase):
 
 class TestDiscoverNamedAccounts(unittest.TestCase):
 	def test_single_edge_profile_returns_no_named_accounts(self):
-		if not os.path.isdir(USER_DATA_DIR):
+		root = os.environ.get(accounts.DATA_DIR_ENV_VAR, accounts.DEFAULT_ROOT_DATA_DIR)
+		if not os.path.isdir(root):
 			self.skipTest("data-dir not present")
 
-		if not accounts.is_edge_user_data_dir(USER_DATA_DIR):
+		if not accounts.is_edge_user_data_dir(root):
 			self.skipTest("data-dir is not a single Edge profile layout")
 
 		self.assertEqual(accounts.discover_named_accounts(), [])

@@ -1,55 +1,33 @@
+from constants import DOTENV_PATH
 import logging
 import os
 import sys
-
+import dotenv
 import log_utils
 import accounts
+import browser
+import desktop_utils
 import queries
 import site_registry
-from selenium import webdriver
-from selenium.common.exceptions import SessionNotCreatedException
 
-HEADLESS = os.environ.get("REWARDS_HEADLESS", "").strip().lower() in ("1", "true", "yes")
+HEADLESS = browser.HEADLESS
 
 logger = logging.getLogger(__name__)
 
 
-def build_options(account: accounts.Account) -> webdriver.EdgeOptions:
-	options = webdriver.EdgeOptions()
-
-	options.add_experimental_option("excludeSwitches", ["enable-automation"])
-	options.add_experimental_option('useAutomationExtension', False)
-	options.add_argument("--disable-blink-features=AutomationControlled")
-	options.add_argument(f"--user-data-dir={account.user_data_dir}")
-	options.add_argument(f"--profile-directory={account.profile_name}")
-
-	if HEADLESS:
-		# A container has no display. The window size is set explicitly because
-		# the pointer code works in viewport coordinates, and the default
-		# headless window is small enough to put cards out of reach.
-		options.add_argument("--headless=new")
-		options.add_argument("--window-size=1920,1080")
-		options.add_argument("--no-sandbox")
-		options.add_argument("--disable-dev-shm-usage")
-
-	return options
-
-
-def run_account(account: accounts.Account, create_runner: site_registry.SiteFactory) -> bool:
+def run_account(account: accounts.Account, create_runner: site_registry.SiteFactory | None = None) -> bool:
 	"""Work one account. Returns whether the browser started."""
-	try:
-		driver = webdriver.Edge(options=build_options(account))
-	except SessionNotCreatedException as exc:
-		# Chromium allows one process per user data directory. When the profile
-		# is already open the driver's copy exits during startup, and selenium
-		# reports it as the browser crashing with a message that names neither
-		# the profile nor the other window.
-		logger.error("[FAIL] %s: could not start Edge with this profile.", account.name)
-		logger.error("       profile directory: %s", account.user_data_dir)
-		logger.error("       The usual cause is that this profile is already open in another")
-		logger.error("       Edge window, including one left over from a previous run.")
-		logger.error("       driver said: %s", log_utils.exception_summary(exc))
+	if create_runner is None:
+		_, _, create_runner = site_registry.resolve()
 
+	try:
+		if not desktop_utils.prepare_desktop_before_launch():
+			return False
+		driver = browser.start_driver(account)
+	finally:
+		desktop_utils.switch_back_after_launch()
+
+	if driver is None:
 		return False
 
 	logger.info("[STEP] Starting browser")
@@ -66,7 +44,8 @@ def run_account(account: accounts.Account, create_runner: site_registry.SiteFact
 			# own error, and the process it is meant to end is dead anyway.
 			logger.warning(
 				"%s: the driver did not shut down cleanly: %s",
-				account.name, log_utils.exception_summary(exc)
+				account.name,
+				log_utils.exception_summary(exc),
 			)
 
 	return True
@@ -74,6 +53,10 @@ def run_account(account: accounts.Account, create_runner: site_registry.SiteFact
 
 def main() -> int:
 	log_utils.setup_logging()
+	desktop_utils.reset_virtual_desktop_state()
+
+	if desktop_utils.is_virtual_desktop_enabled() and not desktop_utils.is_windows():
+		logger.warning("USE_VIRTUAL_DESKTOP is enabled, but virtual desktops are only supported on Windows.")
 
 	try:
 		site_key, site_label, create_runner = site_registry.resolve()
@@ -111,8 +94,10 @@ def main() -> int:
 		except Exception as exc:
 			logger.error(
 				"[FAIL] %s: %s: %s",
-				account.name, type(exc).__name__, log_utils.exception_summary(exc),
-				exc_info=logger.isEnabledFor(logging.DEBUG)
+				account.name,
+				type(exc).__name__,
+				log_utils.exception_summary(exc),
+				exc_info=logger.isEnabledFor(logging.DEBUG),
 			)
 
 	if len(configured) > 1:
@@ -128,8 +113,11 @@ def main() -> int:
 		except EOFError:
 			pass
 
+	desktop_utils.cleanup_virtual_desktop()
+
 	return 0 if started else 1
 
 
 if __name__ == "__main__":
+	if os.path.isfile(DOTENV_PATH): dotenv.load_dotenv(DOTENV_PATH)
 	sys.exit(main())

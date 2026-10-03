@@ -1,4 +1,4 @@
-"""Required Bing search quota."""
+"""Required Bing searches task mixin."""
 
 from __future__ import annotations
 
@@ -10,7 +10,9 @@ import queries
 from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.keys import Keys
 
-logger = logging.getLogger(__name__)
+from sites.ms_rewards.paths import REWARDS_HOME_URL
+
+logger = logging.getLogger("rewards_tasks")
 
 
 class SearchTasks:
@@ -25,6 +27,9 @@ class SearchTasks:
 
 		logger.info("Search points before: %s/%s", points_earned, max_pts)
 
+		sent = 0
+		self.progress = "sent 0 searches"
+
 		for round_number in range(1, max_rounds + 1):
 			if points_earned >= max_pts:
 				break
@@ -32,14 +37,15 @@ class SearchTasks:
 			# Assume the lower known rate so a round never overshoots by much.
 			searches = max(1, (max_pts - points_earned) // 3)
 
-			self.run_search_batch(searches)
+			batch = self.run_search_batch(searches, already_sent=sent)
+			sent += batch
 
 			previous = points_earned
 			points_earned, max_pts = self.read_search_points()
 
 			logger.info(
 				"Round %s: %s searches -> %s/%s",
-				round_number, searches, points_earned, max_pts
+				round_number, batch, points_earned, max_pts
 			)
 
 			if points_earned <= previous:
@@ -78,7 +84,12 @@ class SearchTasks:
 
 		return points_earned, max_pts
 
-	def run_search_batch(self, count: int):
+	def run_search_batch(self, count: int, already_sent: int = 0) -> int:
+		"""Search up to count queries and return how many actually went out.
+
+		The trends source can come back with fewer queries than asked for, so
+		the caller cannot assume count.
+		"""
 		self.driver.get("https://www.bing.com/")
 		self.tab_utils.ensure_focus()
 
@@ -86,15 +97,19 @@ class SearchTasks:
 
 		# search bar should be auto-focused
 
+		sent_here = 0
+
 		for i, query in enumerate(
 			queries.related_queries(count)
 		):
 			self.keyboard.send_keys(f"{query} -noai{Keys.ENTER}")
+			sent_here = i + 1
+			sent = already_sent + sent_here
+			self.progress = f"sent {sent} {'search' if sent == 1 else 'searches'}"
 
-			time.sleep(random.uniform(0.5, 1))
+			time.sleep(random.uniform(5.5, 7.5))
 
-			try:
-				self.wait_for_then_click(self.elements.get_clear_bing_search_query_button)
+			try: self.wait_for_then_click(self.elements.get_clear_bing_search_query_button)
 			except StaleElementReferenceException:
 				logger.warning(
 					"StaleElementReferenceException when trying to click the clear button for query %s. Trying again...",
@@ -102,5 +117,8 @@ class SearchTasks:
 				)
 				self.wait_for_then_click(self.elements.get_clear_bing_search_query_button)
 
-		self.driver.get("https://rewards.bing.com/")
+		self.driver.get(REWARDS_HOME_URL)
 		self.tab_utils.ensure_focus()
+
+		return sent_here
+
