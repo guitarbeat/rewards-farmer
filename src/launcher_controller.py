@@ -36,6 +36,7 @@ class LauncherSnapshot:
 	setup_strip: str
 	progress_summary: str
 	progress_rows: list[progress.StepRow] = field(default_factory=list)
+	run_history: list[dict] = field(default_factory=list)
 	run_enabled: bool = True
 	stop_enabled: bool = False
 	run_button_text: str = "Run"
@@ -68,6 +69,7 @@ class LauncherController:
 		self.run_progress.active = False
 		self._progress_running = False
 		self._log_buffer: list[str] = []
+		self._history_cache: list[dict] | None = None
 		self.subtitle = "One-click MS Rewards runs with your saved Edge profile."
 		self._prep_ready_subtitle: str | None = None
 
@@ -120,6 +122,7 @@ class LauncherController:
 			lines.extend(self._process_log_text(previous + "\n", to_file=False, emit=False))
 			self.run_count = previous.count("=== Run #")
 
+		self._history_cache = None
 		return lines
 
 	def initial_snapshot(self) -> LauncherSnapshot:
@@ -178,6 +181,7 @@ class LauncherController:
 		self._edge_hint_shown = False
 		stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 		self._reset_progress_for_run()
+		self._history_cache = None
 		self._process_log_text(f"\n=== Run #{self.run_count} started {stamp} ===\n")
 
 		if not os.path.isfile(runtime.VISUAL_SEARCH_IMAGE):
@@ -215,6 +219,7 @@ class LauncherController:
 
 		self._log_buffer = []
 		self.run_count = 0
+		self._history_cache = None
 		try:
 			open(RUN_LOG_FILE, "w", encoding="utf-8").close()
 		except OSError:
@@ -234,6 +239,31 @@ class LauncherController:
 
 	def get_log_text(self) -> str:
 		return "".join(self._log_buffer)
+
+	def run_history(self) -> list[dict]:
+		if self._history_cache is not None:
+			return self._history_cache
+
+		entries = runtime.parse_run_history(self.get_log_text())
+		self._history_cache = [
+			{
+				"number": entry.number,
+				"started": entry.started,
+				"finished": entry.finished,
+				"exit_code": entry.exit_code,
+				"summary": entry.summary,
+				"tone": entry.tone,
+				"ok_count": entry.ok_count,
+				"skip_count": entry.skip_count,
+				"fail_count": entry.fail_count,
+				"search_quota": entry.search_quota,
+			}
+			for entry in entries
+		]
+		return self._history_cache
+
+	def get_run_log(self, run_number: int) -> str:
+		return runtime.extract_run_log(self.get_log_text(), int(run_number))
 
 	def _prepare_image_worker(self) -> None:
 		"""Background work only — never touch UI callbacks from this thread."""
@@ -301,6 +331,7 @@ class LauncherController:
 			exit_code=exit_code,
 			stopped_by_user=stopped_by_user,
 		)
+		self._history_cache = None
 		self._emit_state(status_text=status_text, status_tone=status_tone)
 
 	def _reset_progress_for_run(self) -> None:
@@ -401,6 +432,7 @@ class LauncherController:
 			setup_strip=self.setup_strip_text(),
 			progress_summary=self.run_progress.progress_summary(),
 			progress_rows=self.run_progress.step_rows(),
+			run_history=self.run_history(),
 			run_enabled=not running and can_run,
 			stop_enabled=running and not self._stopping,
 			run_button_text=run_text,

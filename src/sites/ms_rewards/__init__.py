@@ -7,11 +7,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sites.ms_rewards.runner import RewardsTaskUtils
-from sites.ms_rewards.steps import AUTOMATION_TASK_STEPS, BROWSER_STEP, REQUIRED_SEARCHES
-
 if TYPE_CHECKING:
 	from selenium import webdriver
+	from sites.ms_rewards.runner import RewardsTaskUtils
 
 SITE_KEY = "ms_rewards"
 SITE_LABEL = "MS Rewards (Bing)"
@@ -27,5 +25,17 @@ __all__ = [
 ]
 
 
+def __getattr__(name: str):
+	if name in {"AUTOMATION_TASK_STEPS", "BROWSER_STEP", "REQUIRED_SEARCHES"}:
+		from sites.ms_rewards import steps as _steps
+		return getattr(_steps, name)
+	if name == "RewardsTaskUtils":
+		from sites.ms_rewards.runner import RewardsTaskUtils
+		return RewardsTaskUtils
+	raise AttributeError(name)
+
+
 def create_runner(driver: webdriver.Edge):
+	from sites.ms_rewards.runner import RewardsTaskUtils
+
 	return RewardsTaskUtils(driver)

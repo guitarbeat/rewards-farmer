@@ -1,6 +1,8 @@
 # Runs the bot without installing Edge, a driver or Python on the host.
 #
-# The image carries only what main.py actually reaches: selenium and numpy.
+# The image carries what a container run actually imports: selenium for Edge,
+# numpy for trajectory math, python-dotenv for .env loading, and requests +
+# pillow for visual-search image download when the optional mount is absent.
 # pygetwindow, keyboard, matplotlib and pygame are used solely by the
 # recording and visualisation scripts, which are developer tools rather than
 # part of a run, and two of them are Windows-only.
@@ -52,7 +54,12 @@ RUN apt-get update \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir "selenium>=4.46.0,<5.0.0" "numpy"
+RUN pip install --no-cache-dir \
+	"selenium>=4.46.0,<5.0.0" \
+	"numpy" \
+	"python-dotenv>=1.0.1,<2.0.0" \
+	"requests>=2.32.3,<3.0.0" \
+	"pillow>=12.3.0,<13.0.0"
 
 COPY src/ ./src/
 COPY nouns.txt ./

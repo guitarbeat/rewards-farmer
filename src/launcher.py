@@ -1,7 +1,6 @@
 """Desktop launcher for site automation runs.
 
 CustomTkinter UI backed by LauncherController.
-Double-click Launch.bat at the repo root.
 """
 
 from __future__ import annotations
@@ -219,9 +218,46 @@ class LauncherApp(ctk.CTk):
 		self.progress_frame.pack(fill="both", expand=True, padx=16, pady=16)
 		self._build_progress_rows([])
 
+		# --- Past runs ---
+		history_header = ctk.CTkFrame(outer, fg_color="transparent")
+		history_header.grid(row=3, column=0, sticky="ew", pady=(0, 8))
+		history_header.grid_columnconfigure(0, weight=1)
+		theme.make_section_label(history_header, "Past runs").grid(row=0, column=0, sticky="w")
+		self.history_count_label = ctk.CTkLabel(
+			history_header,
+			text="0",
+			font=theme.font(12),
+			fg_color=theme.COLORS["summary_pill"],
+			text_color=theme.COLORS["muted"],
+			corner_radius=10,
+			padx=10,
+			pady=4,
+		)
+		self.history_count_label.grid(row=0, column=1, sticky="e")
+
+		self.history_section = theme.make_card(outer, radius=16)
+		self.history_section.grid(row=4, column=0, sticky="ew", pady=(0, 14))
+		self.history_frame = ctk.CTkScrollableFrame(
+			self.history_section,
+			fg_color="transparent",
+			height=140,
+		)
+		self.history_frame.pack(fill="x", expand=False, padx=10, pady=10)
+		self._history_empty_label = ctk.CTkLabel(
+			self.history_frame,
+			text="No past runs yet. Finished runs will show up here.",
+			font=theme.font(12),
+			text_color=theme.COLORS["muted"],
+			anchor="w",
+			justify="left",
+		)
+		self._history_empty_label.pack(fill="x", padx=6, pady=6)
+		self._history_buttons: list[ctk.CTkButton] = []
+		self._selected_history_run: int | None = None
+
 		# --- Log (secondary, collapsed by default) ---
 		log_header = ctk.CTkFrame(outer, fg_color="transparent")
-		log_header.grid(row=3, column=0, sticky="ew", pady=(0, 8))
+		log_header.grid(row=5, column=0, sticky="ew", pady=(0, 8))
 		log_header.grid_columnconfigure(0, weight=1)
 		theme.make_section_label(log_header, "Detailed log").grid(row=0, column=0, sticky="w")
 		self.log_toggle_button = theme.make_ghost_button(
@@ -248,7 +284,7 @@ class LauncherApp(ctk.CTk):
 
 		# --- Status bar ---
 		self.status_bar = theme.make_card(outer, radius=16)
-		self.status_bar.grid(row=4, column=0, sticky="ew")
+		self.status_bar.grid(row=6, column=0, sticky="ew")
 		status_inner = ctk.CTkFrame(self.status_bar, fg_color="transparent")
 		status_inner.pack(fill="x", padx=18, pady=14)
 		self.status_dot = ctk.CTkLabel(
@@ -432,15 +468,58 @@ class LauncherApp(ctk.CTk):
 			widgets["row_frame"].configure(fg_color=row_bg)
 			widgets["accent"].configure(fg_color=accent_color)
 
+		self._render_history(snapshot.run_history)
+
+	def _render_history(self, entries: list[dict]) -> None:
+		self.history_count_label.configure(text=str(len(entries)))
+		for btn in self._history_buttons:
+			btn.destroy()
+		self._history_buttons = []
+
+		if not entries:
+			self._history_empty_label.pack(fill="x", padx=6, pady=6)
+			return
+
+		self._history_empty_label.pack_forget()
+		for entry in entries:
+			number = int(entry["number"])
+			label = f"#{number}  {entry.get('started') or ''}  —  {entry.get('summary') or ''}"
+			btn = ctk.CTkButton(
+				self.history_frame,
+				text=label,
+				anchor="w",
+				height=36,
+				corner_radius=10,
+				fg_color=theme.COLORS["chip_bg"],
+				hover_color=theme.COLORS["summary_pill"],
+				text_color=theme.COLORS["text"],
+				font=theme.font(12),
+				command=lambda n=number: self._show_history_run(n),
+			)
+			btn.pack(fill="x", padx=4, pady=3)
+			self._history_buttons.append(btn)
+
+	def _show_history_run(self, run_number: int) -> None:
+		text = self.controller.get_run_log(run_number)
+		self._selected_history_run = run_number
+		self.log_text.configure(state="normal")
+		self.log_text.delete("1.0", "end")
+		if text:
+			self.log_text.insert("end", text)
+		self.log_text.configure(state="disabled")
+		if not self._log_visible:
+			self._toggle_log_visibility()
+		self.log_text.see("1.0")
+
 	def _toggle_log_visibility(self) -> None:
 		self._log_visible = not self._log_visible
 		if self._log_visible:
-			self.log_section.grid(row=4, column=0, sticky="nsew", pady=(0, 14))
-			self.status_bar.grid(row=5, column=0, sticky="ew")
+			self.log_section.grid(row=6, column=0, sticky="nsew", pady=(0, 14))
+			self.status_bar.grid(row=7, column=0, sticky="ew")
 			self.log_toggle_button.configure(text="Hide")
 		else:
 			self.log_section.grid_remove()
-			self.status_bar.grid(row=4, column=0, sticky="ew")
+			self.status_bar.grid(row=6, column=0, sticky="ew")
 			self.log_toggle_button.configure(text="Show")
 
 	def _pulse_status(self) -> None:
@@ -488,6 +567,7 @@ class LauncherApp(ctk.CTk):
 			messagebox.showinfo("Run in progress", error)
 			return
 
+		self._selected_history_run = None
 		self.log_text.configure(state="normal")
 		self.log_text.delete("1.0", "end")
 		self.log_text.configure(state="disabled")

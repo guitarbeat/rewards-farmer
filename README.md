@@ -31,6 +31,15 @@ cd rewards-farmer
 Activate the virtual environment & install dependencies (you may have to use `python -m poetry` instead of `poetry`).
 You must have Python 3.12+ and Poetry installed.
 
+**GUI launcher (cross-platform):**
+
+| OS | Setup | Launch | Desktop shortcut |
+| --- | --- | --- | --- |
+| Windows | `Setup.bat` | `Launch.bat` | `Rewards Farmer.lnk` |
+| macOS / Linux | `./setup.sh` | `./launch.sh` | `.command` / `.desktop` |
+
+Or run the shared Python entries directly: `python src/setup_env.py` then `python src/launch.py`. Setup also installs/refreshes the desktop shortcut via `src/install_shortcut.py`.
+
 If `iex (poetry env activate)` fails with *"Cannot bind argument to parameter 'Command' because it is null"*, `poetry install` did not create an environment. Run `python --version` first: an older Python leaves poetry with nothing to activate, and the message explaining that goes to stderr rather than into `iex`.
 
 Windows (PowerShell)

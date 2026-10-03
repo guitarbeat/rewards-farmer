@@ -97,25 +97,32 @@ class LauncherControllerTests(unittest.TestCase):
 				with mock.patch.object(launcher, "LOG_DIR", temp_dir):
 					launcher.write_crash_log(text="forced test crash")
 			self.assertTrue(os.path.isfile(path))
-			content = open(path, encoding="utf-8").read()
+			with open(path, encoding="utf-8") as handle:
+				content = handle.read()
 			self.assertIn("forced test crash", content)
 
 
 class LauncherUsabilityTests(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
+		if not os.environ.get("REWARDS_GUI_TESTS"):
+			raise unittest.SkipTest(
+				"opens a real Tk window; set REWARDS_GUI_TESTS=1 to run"
+			)
 		cls._icon_patch = mock.patch.object(launcher.theme, "load_header_icon", return_value=None)
 		cls._icon_patch.start()
 
 	@classmethod
 	def tearDownClass(cls) -> None:
-		cls._icon_patch.stop()
+		if getattr(cls, "_icon_patch", None) is not None:
+			cls._icon_patch.stop()
 
 	def setUp(self) -> None:
 		self.app = launcher.LauncherApp()
 		self.app.withdraw()
 
 	def tearDown(self) -> None:
+		self.app._cancel_scheduled()
 		self.app.destroy()
 
 	def test_run_button_starts_enabled_when_preflight_passes(self) -> None:
@@ -197,6 +204,25 @@ class LauncherUsabilityTests(unittest.TestCase):
 		)
 		self.assertEqual(text, "Done — 2 tasks OK, 1 skipped, searches 30/30")
 		self.assertEqual(tone, "warning")
+
+	def test_parse_run_history_newest_first(self) -> None:
+		log_text = (
+			"=== Run #1 started 2026-01-01 10:00:00 ===\n"
+			"[OK] Bing daily set\n"
+			"=== Run finished 10:01:00 (exit 0) ===\n"
+			"\n"
+			"=== Run #2 started 2026-01-02 11:00:00 ===\n"
+			"[FAIL] Explore on Bing\n"
+			"=== Run finished 11:05:00 (exit 1) ===\n"
+		)
+		entries = runtime.parse_run_history(log_text)
+		self.assertEqual(len(entries), 2)
+		self.assertEqual(entries[0].number, 2)
+		self.assertEqual(entries[0].tone, "danger")
+		self.assertEqual(entries[1].number, 1)
+		self.assertEqual(entries[1].tone, "success")
+		self.assertIn("Run #2 started", runtime.extract_run_log(log_text, 2))
+		self.assertIn("exit 1", runtime.extract_run_log(log_text, 2))
 
 	def test_ensure_visual_search_image_returns_true_when_file_exists(self) -> None:
 		with mock.patch("launcher_runtime.os.path.isfile", return_value=True):
@@ -365,6 +391,8 @@ class RunProgressTests(unittest.TestCase):
 		self.assertEqual(run.progress_summary(), "1 of 7 complete")
 
 	def test_launcher_builds_progress_widgets(self) -> None:
+		if not os.environ.get("REWARDS_GUI_TESTS"):
+			self.skipTest("opens a real Tk window; set REWARDS_GUI_TESTS=1 to run")
 		app = launcher.LauncherApp()
 		app.withdraw()
 		try:
@@ -372,6 +400,7 @@ class RunProgressTests(unittest.TestCase):
 			self.assertIn(task_steps.BROWSER_STEP, app._progress_row_widgets)
 			self.assertTrue(hasattr(app, "log_toggle_button"))
 		finally:
+			app._cancel_scheduled()
 			app.destroy()
 
 
