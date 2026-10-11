@@ -9,7 +9,7 @@ import time
 
 import log_utils
 import random_image_for_visual_search
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -63,6 +63,14 @@ class VisualSearchTasks:
 			try:
 				self.wait_for_then_click(self.elements.get_open_visual_search_sidebar, timeout=5)
 				self.progress = "opened the sidebar"
+
+				# Once today's visual search is done the panel has no link left to
+				# wait for. Without this every later run that day waited it out and
+				# reported a task with nothing left to do as failed.
+				if hasattr(self.elements, "visual_search_done_today") and self.elements.visual_search_done_today():
+					logger.info("Visual search is already done for today")
+					return
+
 				self.wait_for_then_click(
 					self.elements.get_search_now_link_from_visual_search_sidebar,
 					timeout=5,

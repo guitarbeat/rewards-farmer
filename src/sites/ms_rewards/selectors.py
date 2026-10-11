@@ -40,6 +40,8 @@ class Labels:
 	# dashboard control that goes stale mid-interaction. Later needles are
 	# fallbacks for markets and unactivated-streak layouts.
 	VISUAL_SEARCH_STREAK = "visual search streak"
+	VISUAL_SEARCH_NOW = "search now"
+	VISUAL_SEARCH_ACTIVATE = "activate streak"
 	VISUAL_SEARCH_NEEDLES = (
 		"visual search streak",
 		"visual search",
@@ -280,8 +282,16 @@ class ElementSelectionUtils:
 	# ------------------------------------------------------------------
 
 	def get_explore_on_bing_elements(self):
+		"""The cards of the Explore on Bing section, or [] when it is not there.
+
+		A section that is on the page and still rendering raises ElementNotReady
+		instead of coming back as [], so the task can wait for it rather than
+		report a market that does not ship it.
+		"""
 		try:
 			container = self._container_by_id("exploreonbing")
+		except ElementNotReady:
+			raise
 		except NoSuchElementException:
 			return []
 
@@ -332,6 +342,27 @@ class ElementSelectionUtils:
 			return links[-1]
 
 		raise NoSuchElementException("visual search sidebar has no usable link")
+
+	def visual_search_done_today(self) -> bool:
+		"""Whether the panel shows today's visual search as done.
+
+		Once it is, search now stops being a link. It is rendered as a span with
+		role="link" and aria-disabled="true", and the panel has no <a> left at
+		all, so waiting for the link runs out however long it waits.
+		"""
+		sidebar = self.get_sidebar_section()
+
+		for control in sidebar.find_elements(By.CSS_SELECTOR, '[role="link"]'):
+			try:
+				if (
+					control.get_dom_attribute("aria-disabled") == "true"
+					and Labels.VISUAL_SEARCH_NOW in (control.text or "").lower()
+				):
+					return True
+			except StaleElementReferenceException:
+				continue
+
+		return False
 
 	def get_visual_search_button(self):
 		for selector in (

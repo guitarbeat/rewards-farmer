@@ -115,6 +115,8 @@ Run main.py (`python src/main.py`; paths are resolved from the repository, so it
 
 EU Users: you may have to accept a consent banner once on `rewards.bing.com` and on the Bing search page, `bing.com`. Once you consent, your choice will be saved for future runs using the same profile, so you will not need to interact with the banner during automated runs.
 
+The bot finds buttons by their English labels, so it starts Edge with `--accept-lang=en-US` and Rewards and Bing load in English whatever language Edge is set to. Edge saves this setting in the profile, so Bing and Rewards also show up in English when you open that profile yourself.
+
 Close all webdriver browser instances. Run `main.py` again; the automation should start working.
 
 ## If Edge will not start

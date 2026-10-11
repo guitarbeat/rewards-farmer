@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from selenium.common.exceptions import (
 	NoSuchElementException,
+	StaleElementReferenceException,
 	TimeoutException,
 	WebDriverException,
 )
@@ -344,6 +345,23 @@ def failing_on(call_number, exc, value=None):
 	return stand_in
 
 
+def wait_once(getter, timeout=10):
+	"""wait_for_element without the waiting: one look, then the same verdict."""
+	try:
+		found = getter()
+	except ElementNotReady as exc:
+		# There but still rendering, which the real wait lets out as the
+		# plain TimeoutException.
+		raise TimeoutException(str(exc)) from exc
+	except NoSuchElementException as exc:
+		raise ElementNeverAppeared(str(exc)) from exc
+
+	if not found:
+		raise TimeoutException("found something and rejected it")
+
+	return found
+
+
 class ProgressInsideTasks(unittest.TestCase):
 	"""The real task methods, stopped part way through.
 
@@ -423,6 +441,117 @@ class ProgressInsideTasks(unittest.TestCase):
 		output = self._report(tasks, "complete_explore_on_bing_tasks")
 
 		self.assertIn("[SKIP] Explore on Bing: not available in this UI variant", output)
+
+	def test_explore_on_bing_without_a_section_is_not_kept_waiting(self):
+		# Most accounts do not have the section. Asking once is enough there,
+		# a wait would only add its length to every run.
+		tasks = self._tasks(get_explore_on_bing_elements=lambda: [])
+		waited = []
+		tasks.wait_for_element = lambda getter, timeout=10: waited.append(getter)
+
+		self._report(tasks, "complete_explore_on_bing_tasks")
+
+		self.assertEqual(waited, [])
+
+	def _explore_rendering(self, ready_after):
+		"""Explore on Bing on a page whose section renders after ready_after looks."""
+		looks = []
+
+		def explore():
+			looks.append(1)
+
+			if len(looks) <= ready_after:
+				raise ElementNotReady("'exploreonbing' is present but no visible copy has content yet")
+
+			return ["card 1"]
+
+		tasks = self._tasks(
+			get_explore_on_bing_elements=explore,
+			extract_card_descriptions=lambda card: card,
+			get_bing_search_bar=lambda: "search bar",
+			card_is_complete=lambda card: True,
+		)
+		tasks.wait_for_element = wait_once
+
+		return tasks
+
+	def test_explore_on_bing_waits_for_a_section_that_is_still_rendering(self):
+		tasks = self._explore_rendering(ready_after=1)
+
+		with mock.patch.object(rewards_tasks.queries, "search_query_for_task", lambda desc: "query"):
+			output = self._report(tasks, "complete_explore_on_bing_tasks")
+
+		self.assertIn("[OK] Explore on Bing", output)
+
+	def test_explore_on_bing_that_never_finishes_rendering_is_a_failure(self):
+		tasks = self._explore_rendering(ready_after=99)
+
+		output = self._report(tasks, "complete_explore_on_bing_tasks")
+
+		self.assertIn(
+			"[FAIL] Explore on Bing: on the page but not ready in time (TimeoutException)",
+			output,
+		)
+
+	def test_explore_on_bing_survives_the_section_rendering_again(self):
+		# #102: coming back from each search tab re-renders the section, so a
+		# card read before the first search is stale by the second click.
+		render = [0]
+		clicked = []
+
+		def cards():
+			return [(f"card {i}", render[0]) for i in range(1, 4)]
+
+		def click(card):
+			if card[1] != render[0]:
+				raise StaleElementReferenceException("stale element not found in the current frame")
+
+			clicked.append(card[0])
+
+		def back_on_the_earn_page(exceptions=None):
+			render[0] += 1
+
+		tasks = self._tasks(
+			get_explore_on_bing_elements=cards,
+			extract_card_descriptions=lambda card: card[0],
+			get_bing_search_bar=lambda: "search bar",
+			card_is_complete=lambda card: True,
+		)
+		tasks.move_to_and_click = click
+		tasks.tab_utils.close_all_other_tabs = back_on_the_earn_page
+		tasks.wait_for_element = wait_once
+
+		with mock.patch.object(rewards_tasks.queries, "search_query_for_task", lambda desc: "query"):
+			output = self._report(tasks, "complete_explore_on_bing_tasks")
+
+		self.assertEqual(clicked, ["card 1", "card 2", "card 3"])
+		self.assertIn("[OK] Explore on Bing", output)
+
+	def test_visual_search_done_for_today_is_not_a_failure(self):
+		# What a second run on the same day sees: no link, and search now
+		# rendered disabled.
+		clicked = []
+		tasks = self._tasks(
+			get_open_visual_search_sidebar=lambda: "opener",
+			get_search_now_link_from_visual_search_sidebar=mock.Mock(side_effect=NoSuchElementException("no link")),
+			visual_search_done_today=lambda: True,
+			get_visual_search_button=mock.Mock(side_effect=NoSuchElementException("no camera")),
+		)
+		tasks.move_to_and_click = lambda target: clicked.append(target() if callable(target) else target)
+		tasks.wait_for_then_click = lambda getter, timeout=10: tasks.move_to_and_click(
+			tasks.wait_for_element(getter, timeout)
+		)
+		tasks.wait_for_element = wait_once
+
+		with mock.patch(
+			"sites.ms_rewards.tasks.visual_search.random_image_for_visual_search.ensure_visual_search_image",
+			return_value=__file__,
+		):
+			output = self._report(tasks, "complete_visual_search")
+
+		self.assertIn("[OK] Visual search", output)
+		self.assertIn("Visual search is already done for today", output)
+		self.assertEqual(clicked, ["opener"])
 
 	def test_visual_search_that_opened_its_sidebar_is_not_called_unavailable(self):
 		# The sidebar is there, the link inside it is not. The task then

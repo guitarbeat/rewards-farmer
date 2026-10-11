@@ -179,6 +179,19 @@ class TestDriverEnvironment(EnvTestCase):
 
 		self.assertIn(f"--user-data-dir={os.environ.get(accounts.DATA_DIR_ENV_VAR, accounts.DEFAULT_ROOT_DATA_DIR)}", self.seen["options"].arguments)
 
+	def test_pages_are_asked_for_in_english(self):
+		# #91: a browser set to Spanish got Rewards in Spanish, and none of the
+		# English labels the selectors look for were on the page.
+		browser.start_driver(ACCOUNT)
+
+		self.assertIn("--accept-lang=en-US", self.seen["options"].arguments)
+
+	def test_headless_pages_are_asked_for_in_english_too(self):
+		with mock.patch.object(browser, "HEADLESS", True):
+			browser.start_driver(ACCOUNT)
+
+		self.assertIn("--accept-lang=en-US", self.seen["options"].arguments)
+
 
 class TestPathsIgnoreTheWorkingDirectory(unittest.TestCase):
 	"""#71: launched from C:\\WINDOWS\\system32, the profile was created there."""

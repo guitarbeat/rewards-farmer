@@ -44,6 +44,12 @@ def get_path_with_transformed_velo(
 
 
 def get_movement_time_from_fitts_law(distance: float, target_width: float) -> float:
+	# A second click on the same control can pick the point the first move
+	# ended on. The pointer is already there and log2(0) raises, so there is
+	# no move to time. move_mouse lands a zero-length move on the target.
+	if distance <= 0:
+		return 0.0
+
 	index_of_difficulty = math.log2((2.0 * distance) / target_width)
 	movement_time = FITTS_LAW_A + FITTS_LAW_B * index_of_difficulty
 

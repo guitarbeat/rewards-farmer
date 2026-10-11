@@ -52,6 +52,12 @@ def build_options(account: accounts.Account) -> webdriver.EdgeOptions:
 	options.add_argument(f"--user-data-dir={account.user_data_dir}")
 	options.add_argument(f"--profile-directory={account.profile_name}")
 
+	# The selectors find buttons by their English labels, and Rewards renders
+	# in the browser's accept language, so on a browser set to another
+	# language every task came back as not available (#91). Edge saves this
+	# in the profile, which is what the README tells users to expect.
+	options.add_argument("--accept-lang=en-US")
+
 	if os.environ.get("EDGE_BINARY"):
 		options.binary_location = os.environ["EDGE_BINARY"]
 

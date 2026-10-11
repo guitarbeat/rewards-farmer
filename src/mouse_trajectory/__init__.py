@@ -20,7 +20,7 @@ from mouse_trajectory.constants import (
 	FITTS_LAW_B,
 	Point,
 )
-from mouse_trajectory.mouse import MouseUtils
+from mouse_trajectory.mouse import MouseUtils, logger
 from mouse_trajectory.path import (
 	choose_target_in_element,
 	get_final_path_from_real_time,
@@ -31,9 +31,13 @@ from mouse_trajectory.timing import (
 	get_path_with_transformed_velo,
 	logistic_sigmoid,
 )
+from selenium.common.exceptions import JavascriptException, TimeoutException
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
 
 __all__ = [
+	"logger",
+	"JavascriptException",
+	"TimeoutException",
 	"Point",
 	"DEFAULT_INTERMEDIATE_RADIUS_INTERVAL",
 	"DEFAULT_DEVIATION_INTERVAL",
