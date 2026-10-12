@@ -73,9 +73,6 @@ class RewardsFarmerApp(App):
 	#setup, #schedule {
 		height: 1;
 		padding: 0 1;
-	}
-
-	#schedule {
 		color: $text-muted;
 	}
 
@@ -108,45 +105,38 @@ class RewardsFarmerApp(App):
 	#content-pane {
 		width: 1fr;
 		height: 1fr;
-		padding: 0 0 0 1;
+		padding: 0;
 	}
 
-	/* Panel styling with rounded borders and titles */
+	/* Cohesive panel framing */
 	#panel-config, #panel-dashboard, #panel-progress {
+		border: round $surface-lighten-2;
+		border-title-align: left;
+		border-title-style: bold;
+		border-title-color: $text-muted;
 		height: auto;
 		margin-bottom: 0;
 		padding: 0 1;
 	}
 
-	#panel-config {
+	#panel-config:focus-within, #panel-dashboard:focus-within {
 		border: round $primary;
-		border-title-align: left;
-		border-title-style: bold;
 		border-title-color: $primary;
 	}
 
-	#panel-dashboard {
-		border: round $accent;
-		border-title-align: left;
-		border-title-style: bold;
-		border-title-color: $accent;
-	}
-
 	#panel-progress {
-		border: round $secondary;
-		border-title-align: left;
-		border-title-style: bold;
-		border-title-color: $secondary;
 		max-height: 8;
 	}
 
-	/* Configuration panel controls */
+	/* Profile selection */
 	#profile-select {
 		height: auto;
 		margin: 0;
 		padding: 0;
+		border: none;
 	}
 
+	/* Task toggle grid */
 	#task-toggles-grid {
 		layout: grid;
 		grid-size: 2;
@@ -160,26 +150,48 @@ class RewardsFarmerApp(App):
 		height: 1;
 		margin: 0;
 		padding: 0;
+		background: transparent;
+		border: none;
 	}
 
-	/* Dashboard metrics */
+	/* Telemetry & metrics styling */
 	#stat-points, #active-step-label, #timer-search-delay, #timer-schedule-window {
 		height: 1;
 		padding: 0;
 	}
 
-	#stat-points {
+	.points-positive {
+		color: $success;
 		text-style: bold;
 	}
 
-	#active-step-label {
+	.points-zero {
+		color: $text-muted;
+	}
+
+	.step-active {
 		color: $accent;
+		text-style: bold;
+	}
+
+	.step-idle {
+		color: $text-muted;
+	}
+
+	.timer-active {
+		color: $warning;
+		text-style: bold;
+	}
+
+	.timer-idle {
+		color: $text-muted;
 	}
 
 	#active-step-bar {
 		height: 1;
 		margin: 0;
 		padding: 0;
+		border: none;
 	}
 
 	/* Action buttons */
@@ -188,19 +200,49 @@ class RewardsFarmerApp(App):
 		grid-size: 3 2;
 		grid-columns: 1fr 1fr 1fr;
 		height: 2;
-		margin-top: 0;
+		margin: 0;
 		padding: 0;
 	}
 
 	#actions Button {
 		height: 1;
-		margin: 0 1 0 0;
+		margin: 0;
 		padding: 0 1;
 		border: none;
 		min-width: 5;
+		background: $surface-lighten-1;
+		color: $text;
 	}
 
-	/* Progress rows and step styling */
+	#actions Button:hover {
+		background: $surface-lighten-2;
+	}
+
+	#actions #run {
+		background: $success 28%;
+		color: $success;
+		text-style: bold;
+	}
+
+	#actions #run:hover {
+		background: $success 45%;
+	}
+
+	#actions #stop {
+		background: $error 28%;
+		color: $error;
+		text-style: bold;
+	}
+
+	#actions #stop:hover {
+		background: $error 45%;
+	}
+
+	#actions Button:disabled {
+		opacity: 35%;
+	}
+
+	/* Progress rows and step checklist */
 	#progress-summary {
 		height: 1;
 		padding: 0;
@@ -213,8 +255,9 @@ class RewardsFarmerApp(App):
 	}
 
 	.step {
-		height: auto;
+		height: 1;
 		padding: 0 1;
+		color: $text-muted;
 	}
 
 	.step-running {
@@ -227,41 +270,12 @@ class RewardsFarmerApp(App):
 	}
 
 	.step-skip {
-		color: $warning;
+		color: $text-muted;
 	}
 
 	.step-fail {
 		color: $error;
 		text-style: bold;
-	}
-
-	/* Distinct status badge classes */
-	.badge-ok {
-		background: $success 25%;
-		color: $success;
-		text-style: bold;
-		padding: 0 1;
-	}
-
-	.badge-running {
-		background: $accent 25%;
-		color: $accent;
-		text-style: bold;
-		padding: 0 1;
-	}
-
-	.badge-skip {
-		background: $warning 25%;
-		color: $warning;
-		text-style: bold;
-		padding: 0 1;
-	}
-
-	.badge-fail {
-		background: $error 25%;
-		color: $error;
-		text-style: bold;
-		padding: 0 1;
 	}
 
 	/* Tabbed content */
@@ -280,10 +294,13 @@ class RewardsFarmerApp(App):
 		height: 1fr;
 		margin: 0;
 		border: none;
+		scrollbar-size: 1 1;
 	}
 
 	#log {
 		height: 1fr;
+		background: $surface-darken-1;
+		color: $text;
 	}
 
 	#history-count {
@@ -295,6 +312,12 @@ class RewardsFarmerApp(App):
 	#history {
 		height: 1fr;
 		margin: 0;
+		background: $surface-darken-1;
+	}
+
+	#history ListItem {
+		height: 1;
+		padding: 0 1;
 	}
 
 	/* Bottom status bar */
@@ -302,26 +325,32 @@ class RewardsFarmerApp(App):
 		dock: bottom;
 		height: 1;
 		padding: 0 1;
+		background: $surface;
+		color: $text;
 	}
 
 	#status.tone-success {
 		color: $success;
+		text-style: bold;
 	}
 
 	#status.tone-warning {
 		color: $warning;
+		text-style: bold;
 	}
 
 	#status.tone-danger {
 		color: $error;
+		text-style: bold;
 	}
 
 	#status.tone-running {
 		color: $accent;
+		text-style: bold;
 	}
 
 	#status.tone-idle {
-		color: $text;
+		color: $text-muted;
 	}
 
 	/* Responsive compact rules for short screens (<= 28 rows) */
@@ -413,7 +442,7 @@ class RewardsFarmerApp(App):
 						yield Checkbox("Bonus", value=True, id="task-bonus", compact=True)
 
 				dash = Container(id="panel-dashboard")
-				dash.border_title = " Live Dashboard "
+				dash.border_title = " Session Telemetry "
 				with dash:
 					yield Static("Points: +0  ·  Session: +0", id="stat-points")
 					yield Static("▶ Ready", id="active-step-label")
@@ -617,9 +646,11 @@ class RewardsFarmerApp(App):
 
 	def _paint_dashboard(self, snapshot: controller.LauncherSnapshot) -> None:
 		try:
-			self.query_one("#stat-points", Static).update(
+			pts_w = self.query_one("#stat-points", Static)
+			pts_w.update(
 				f"Points: +{snapshot.points_earned}  ·  Session: +{snapshot.session_points}"
 			)
+			pts_w.set_classes("points-positive" if (snapshot.points_earned > 0 or snapshot.session_points > 0) else "points-zero")
 		except NoMatches:
 			pass
 
@@ -629,10 +660,13 @@ class RewardsFarmerApp(App):
 				step_name = snapshot.active_step or snapshot.status_text or "Running…"
 				detail = f": {snapshot.active_step_detail}" if snapshot.active_step_detail else ""
 				step_label.update(f"▶ {step_name}{detail}")
+				step_label.set_classes("step-active")
 			elif snapshot.status_text and snapshot.status_text != "Ready to run":
 				step_label.update(f"▶ {snapshot.status_text}")
+				step_label.set_classes("step-active")
 			else:
 				step_label.update("▶ Ready")
+				step_label.set_classes("step-idle")
 		except NoMatches:
 			pass
 
@@ -647,8 +681,10 @@ class RewardsFarmerApp(App):
 			delay_widget = self.query_one("#timer-search-delay", Static)
 			if snapshot.search_delay_remaining is not None and snapshot.search_delay_remaining > 0:
 				delay_widget.update(f"⏳ Delay: {snapshot.search_delay_remaining:.1f}s")
+				delay_widget.set_classes("timer-active")
 			else:
 				delay_widget.update("⏳ Delay: idle")
+				delay_widget.set_classes("timer-idle")
 		except NoMatches:
 			pass
 
@@ -656,10 +692,13 @@ class RewardsFarmerApp(App):
 			sched_widget = self.query_one("#timer-schedule-window", Static)
 			if snapshot.daily_schedule_countdown:
 				sched_widget.update(f"⏰ Daily: {snapshot.daily_schedule_countdown}")
+				sched_widget.set_classes("timer-active")
 			elif daily_schedule.claimed_today():
 				sched_widget.update("⏰ Daily: completed today")
+				sched_widget.set_classes("timer-idle")
 			else:
 				sched_widget.update("⏰ Daily: idle")
+				sched_widget.set_classes("timer-idle")
 		except NoMatches:
 			pass
 
