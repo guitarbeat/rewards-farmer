@@ -9,7 +9,7 @@ import sys
 import time
 import traceback
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TextIO
 
 try:
@@ -121,6 +121,46 @@ def readiness_summary() -> str:
 		parts.append("visual search will download on run")
 
 	return " · ".join(parts)
+
+
+def detect_edge_profiles(user_data_dir: str | None = None) -> list[tuple[str, str]]:
+	"""Return list of (profile_name, display_label) for detected Edge profiles."""
+	try:
+		found = accounts.list_edge_profiles(user_data_dir)
+		if found:
+			return [(a.profile_name, accounts.account_display_label(a)) for a in found]
+	except Exception:
+		pass
+	return [("Default", "Default profile")]
+
+
+def get_daily_window_countdown(now: datetime | None = None) -> str | None:
+	"""Return formatted countdown string to next daily schedule window, or None."""
+	try:
+		import daily_schedule
+	except Exception:
+		return None
+
+	plan = daily_schedule.load_plan()
+	if plan is None or daily_schedule.claimed_today():
+		return None
+
+	current_time = now if now is not None else datetime.now()
+	window_start = current_time.replace(
+		hour=0, minute=0, second=0, microsecond=0
+	) + timedelta(minutes=plan.start_minute)
+	window_end = window_start + timedelta(minutes=plan.window_minutes)
+
+	if current_time < window_start:
+		diff = window_start - current_time
+		hours, remainder = divmod(int(diff.total_seconds()), 3600)
+		minutes = remainder // 60
+		return f"in {hours:02d}h {minutes:02d}m"
+	elif current_time <= window_end:
+		diff = window_end - current_time
+		minutes = int(diff.total_seconds()) // 60
+		return f"active ({minutes}m left)"
+	return None
 
 
 def ensure_visual_search_image() -> bool:

@@ -12,3 +12,4 @@ logs/
 .last_run
 __pycache__/
 .env
+.agents/

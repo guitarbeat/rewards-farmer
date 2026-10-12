@@ -4,20 +4,26 @@ from __future__ import annotations
 
 import os
 import queue
+import re
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Iterable
 
+import accounts
 import launcher_progress as progress
 import launcher_runtime as runtime
 import site_registry
+from task_steps import AUTOMATION_TASK_STEPS
 
 REPO_ROOT = runtime.REPO_ROOT
 MAIN_SCRIPT = runtime.MAIN_SCRIPT
 LOG_DIR = runtime.LOG_DIR
 RUN_LOG_FILE = os.path.join(LOG_DIR, "launcher_runs.log")
 GUI_ENV_FLAG = "REWARDS_LAUNCHED_FROM_GUI"
+
+_DELAY_RE = re.compile(r"\[DELAY\]\s*([0-9]+(?:\.[0-9]+)?)")
 
 # Sent from background workers; drained only on the UI/main poll thread.
 SPAWN_AFTER_PREP = object()
@@ -43,6 +49,17 @@ class LauncherSnapshot:
 	stopping: bool = False
 	preparing_image: bool = False
 	running: bool = False
+
+	# --- Milestone 1 additions ---
+	selected_profile: str | None = None
+	available_profiles: list[tuple[str, str]] = field(default_factory=list)
+	enabled_tasks: dict[str, bool] = field(default_factory=dict)
+	points_earned: int = 0
+	session_points: int = 0
+	active_step: str | None = None
+	active_step_detail: str = ""
+	search_delay_remaining: float | None = None
+	daily_schedule_countdown: str | None = None
 
 
 class LauncherController:
@@ -73,6 +90,76 @@ class LauncherController:
 		self.subtitle = "One-click MS Rewards runs with your saved Edge profile."
 		self._prep_ready_subtitle: str | None = None
 
+		self.selected_profile: str | None = None
+		self.enabled_tasks: set[str] = set(AUTOMATION_TASK_STEPS)
+		self._delay_deadline: float | None = None
+
+	def get_available_profiles(self) -> list[tuple[str, str]]:
+		return runtime.detect_edge_profiles()
+
+	def set_selected_profile(self, profile_name: str | None) -> None:
+		self.selected_profile = profile_name
+		self._emit_state()
+
+	def toggle_task(self, task_name: str, enabled: bool | None = None) -> bool:
+		if task_name not in AUTOMATION_TASK_STEPS:
+			raise ValueError(f"Unknown task: {task_name}")
+		if enabled is None:
+			if task_name in self.enabled_tasks:
+				self.enabled_tasks.remove(task_name)
+			else:
+				self.enabled_tasks.add(task_name)
+		elif enabled:
+			self.enabled_tasks.add(task_name)
+		else:
+			self.enabled_tasks.discard(task_name)
+		self._emit_state()
+		return task_name in self.enabled_tasks
+
+	def set_task_enabled(self, task_name: str, enabled: bool) -> None:
+		self.toggle_task(task_name, enabled=enabled)
+
+	def is_task_enabled(self, task_name: str) -> bool:
+		return task_name in self.enabled_tasks
+
+	def set_enabled_tasks(self, tasks: Iterable[str]) -> None:
+		valid = set()
+		for t in tasks:
+			if t not in AUTOMATION_TASK_STEPS:
+				raise ValueError(f"Unknown task: {t}")
+			valid.add(t)
+		self.enabled_tasks = valid
+		self._emit_state()
+
+	@property
+	def _running(self) -> bool:
+		return self._progress_running
+
+	@_running.setter
+	def _running(self, value: bool) -> None:
+		self._progress_running = bool(value)
+
+	def get_search_delay_remaining(self) -> float | None:
+		if not self._running:
+			self._delay_deadline = None
+			return None
+		if self._delay_deadline is None:
+			return None
+		remaining = self._delay_deadline - time.time()
+		if remaining <= 0:
+			self._delay_deadline = None
+			return None
+		return round(remaining, 1)
+
+	def set_search_delay(self, seconds: float) -> None:
+		if not self._running:
+			return
+		self._delay_deadline = time.time() + max(0.0, float(seconds))
+
+	@property
+	def session_points(self) -> int:
+		return self.run_progress.session_points
+
 	def build_env(self) -> dict[str, str]:
 		env = os.environ.copy()
 		env[site_registry.ENV_VAR] = site_registry.DEFAULT_SITE
@@ -81,12 +168,20 @@ class LauncherController:
 		env["OMP_NUM_THREADS"] = "1"
 		env.setdefault("QUERY_SOURCE", "trends")
 		env.pop("REWARDS_ACCOUNTS", None)
+		if self.selected_profile:
+			env[accounts.EDGE_PROFILES_ENV_VAR] = self.selected_profile
+		else:
+			env.pop(accounts.EDGE_PROFILES_ENV_VAR, None)
+		env["REWARDS_ENABLED_TASKS"] = ",".join(
+			t for t in AUTOMATION_TASK_STEPS if t in self.enabled_tasks
+		)
 		return env
 
 	def setup_strip_text(self) -> str:
 		site = self.run_progress.site_label or site_registry.site_label(site_registry.DEFAULT_SITE)
 		query = self.run_progress.query_source or runtime.query_source_label()
-		return f"{site}  ·  Edge profile  ·  {query}"
+		profile = self.selected_profile or "Edge profile"
+		return f"{site}  ·  {profile}  ·  {query}"
 
 	def log_tag_for_line(self, line: str) -> str | None:
 		if line.startswith("==="):
@@ -184,7 +279,7 @@ class LauncherController:
 		self._history_cache = None
 		self._process_log_text(f"\n=== Run #{self.run_count} started {stamp} ===\n")
 
-		if not os.path.isfile(runtime.VISUAL_SEARCH_IMAGE):
+		if "Visual search" in self.enabled_tasks and not os.path.isfile(runtime.VISUAL_SEARCH_IMAGE):
 			self._preparing_image = True
 			self._emit_state(status_text="Preparing visual search image…", status_tone="running")
 			threading.Thread(target=self._prepare_image_worker, daemon=True).start()
@@ -200,6 +295,7 @@ class LauncherController:
 
 		self._stopping = True
 		self._user_stopped = True
+		self._delay_deadline = None
 		self._process_log_text("\nStopping run…\n")
 		self._emit_state(status_text="Stopping…", status_tone="warning")
 
@@ -220,6 +316,8 @@ class LauncherController:
 		self._log_buffer = []
 		self.run_count = 0
 		self._history_cache = None
+		self.run_progress.session_points = 0
+		self._delay_deadline = None
 		try:
 			open(RUN_LOG_FILE, "w", encoding="utf-8").close()
 		except OSError:
@@ -320,6 +418,7 @@ class LauncherController:
 		self._user_stopped = False
 		self._stopping = False
 		self._progress_running = False
+		self._delay_deadline = None
 		self.process = None
 
 		stamp = datetime.now().strftime("%H:%M:%S")
@@ -358,6 +457,10 @@ class LauncherController:
 			line_for_progress = line.rstrip("\r\n")
 			if line_for_progress and self._progress_running:
 				self.run_progress.update_from_line(line_for_progress)
+
+			delay_match = _DELAY_RE.search(line)
+			if delay_match and self._running:
+				self.set_search_delay(float(delay_match.group(1)))
 
 			if not self._edge_hint_shown:
 				hint = runtime.edge_profile_hint_for_line(line)
@@ -439,6 +542,15 @@ class LauncherController:
 			stopping=self._stopping,
 			preparing_image=self._preparing_image,
 			running=running,
+			selected_profile=self.selected_profile,
+			available_profiles=self.get_available_profiles(),
+			enabled_tasks={t: (t in self.enabled_tasks) for t in AUTOMATION_TASK_STEPS},
+			points_earned=self.run_progress.points_earned,
+			session_points=self.run_progress.session_points,
+			active_step=self.run_progress.active_step(),
+			active_step_detail=self.run_progress.active_step_detail(),
+			search_delay_remaining=self.get_search_delay_remaining(),
+			daily_schedule_countdown=runtime.get_daily_window_countdown(),
 		)
 
 	def _emit_state(

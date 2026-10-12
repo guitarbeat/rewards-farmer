@@ -24,6 +24,16 @@ def _message(line: str) -> str:
 	return _LOG_PREFIX_RE.sub("", stripped, count=1)
 
 
+TASK_POINTS: dict[str, int] = {
+	"Bing daily set": 30,
+	"Explore on Bing": 15,
+	"Visual search": 5,
+	"Misc cards": 10,
+	"Bonus points": 5,
+	"Required searches": 30,
+}
+
+
 @dataclass
 class StepRow:
 	name: str
@@ -41,12 +51,19 @@ class RunProgress:
 	active: bool = False
 	_current_running: str | None = None
 	other_failures: int = 0
+	points_earned: int = 0
+	session_points: int = 0
+	_session_baseline_points: int = 0
+	_fallback_search_points: int = 0
+	_task_points_earned: int = 0
+	_search_points_start: int | None = None
+	_search_points_current: int | None = None
 
 	def __post_init__(self) -> None:
 		if not self.task_states:
 			self.reset()
 
-	def reset(self) -> None:
+	def reset(self, *, reset_session: bool = False) -> None:
 		self.browser_state = "pending"
 		self.task_states = {
 			name: StepRow(name=name) for name in AUTOMATION_TASK_STEPS
@@ -57,6 +74,16 @@ class RunProgress:
 		self.active = True
 		self._current_running = None
 		self.other_failures = 0
+		self.points_earned = 0
+		self._task_points_earned = 0
+		self._search_points_start = None
+		self._search_points_current = None
+		self._fallback_search_points = 0
+		if reset_session:
+			self.session_points = 0
+			self._session_baseline_points = 0
+		else:
+			self._session_baseline_points = self.session_points
 
 	def finish(self) -> None:
 		self.active = False
@@ -67,6 +94,22 @@ class RunProgress:
 		for row in self.task_states.values():
 			if row.state == "running":
 				row.state = "pending"
+
+	def active_step(self) -> str | None:
+		if not self.active:
+			return None
+		if self._current_running:
+			return self._current_running
+		for row in self.step_rows():
+			if row.state == "running":
+				return row.name
+		return None
+
+	def active_step_detail(self) -> str:
+		step = self.active_step()
+		if not step or step not in self.task_states:
+			return ""
+		return self.task_states[step].detail
 
 	def update_from_line(self, line: str) -> None:
 		stripped = _message(line)
@@ -97,6 +140,7 @@ class RunProgress:
 			self.search_quota = quota
 			if REQUIRED_SEARCHES in self.task_states:
 				self.task_states[REQUIRED_SEARCHES].detail = quota
+			self._update_search_points(quota, is_before=("Search points before:" in stripped))
 			return
 
 		if stripped.startswith(_STEP_PREFIX):
@@ -147,6 +191,7 @@ class RunProgress:
 
 	def _set_task_outcome(self, name: str, outcome: StepState, detail: str) -> None:
 		row = self.task_states[name]
+		was_ok = (row.state == "ok")
 		row.state = outcome
 		row.detail = detail
 		if name == REQUIRED_SEARCHES and self.search_quota:
@@ -155,11 +200,51 @@ class RunProgress:
 		if self._current_running == name:
 			self._current_running = None
 
+		if outcome == "ok" and not was_ok:
+			self._on_task_ok(name)
+
 		if outcome in ("ok", "skip", "fail"):
 			next_pending = _next_pending_task(self.task_states, after=name)
 			if next_pending is not None:
 				self.task_states[next_pending].state = "running"
 				self._current_running = next_pending
+
+	def _update_search_points(self, quota: str, *, is_before: bool = False) -> None:
+		try:
+			current = int(quota.split("/")[0])
+		except (ValueError, IndexError):
+			return
+
+		if self._fallback_search_points > 0:
+			self._task_points_earned -= self._fallback_search_points
+			self._fallback_search_points = 0
+
+		if is_before or self._search_points_start is None:
+			self._search_points_start = current if is_before else 0
+
+		self._search_points_current = current
+		self._recalculate_points()
+
+	def _on_task_ok(self, name: str) -> None:
+		if name == REQUIRED_SEARCHES:
+			if self._search_points_current is None:
+				pts = TASK_POINTS.get(name, 0)
+				self._fallback_search_points = pts
+				self._task_points_earned += pts
+		else:
+			self._task_points_earned += TASK_POINTS.get(name, 0)
+		self._recalculate_points()
+
+	def _recalculate_points(self) -> None:
+		search_pts = 0
+		if self._search_points_current is not None and self._search_points_start is not None:
+			search_pts = max(0, self._search_points_current - self._search_points_start)
+		new_total = self._task_points_earned + search_pts
+		self.points_earned = new_total
+		self.session_points = max(
+			self.session_points,
+			self._session_baseline_points + self.points_earned,
+		)
 
 	def step_rows(self) -> list[StepRow]:
 		rows = [StepRow(name=BROWSER_STEP, state=self.browser_state)]
@@ -271,13 +356,17 @@ def _next_pending_task(task_states: dict[str, StepRow], *, after: str) -> str | 
 
 
 def _parse_search_quota_from_line(line: str) -> str | None:
-	if "Search quota complete:" not in line and "Search quota not filled:" not in line:
-		if "Search points before:" not in line:
-			return None
+	if (
+		"Search quota complete:" not in line
+		and "Search quota not filled:" not in line
+		and "Search points before:" not in line
+		and "searches ->" not in line
+	):
+		return None
 
 	for token in line.split():
 		if "/" in token and token[0].isdigit():
-			return token.rstrip(".")
+			return token.rstrip(".").rstrip(",")
 
 	return None
 

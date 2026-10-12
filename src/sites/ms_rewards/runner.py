@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import log_utils
 import mimic_typing
@@ -117,8 +118,18 @@ class RewardsTaskUtils(
 			"Bonus points": self.claim_bonus_points,
 		}
 		steps = tuple((name, step_methods[name]) for name in AUTOMATION_TASK_STEPS)
+		enabled_raw = os.environ.get("REWARDS_ENABLED_TASKS")
+		enabled_set = (
+			{part.strip().lower() for part in enabled_raw.split(",") if part.strip()}
+			if enabled_raw is not None
+			else None
+		)
 
 		for name, step in steps:
+			if enabled_set is not None and name.lower() not in enabled_set:
+				logger.info("[SKIP] %s: disabled in configuration", name)
+				continue
+
 			logger.info("[STEP] %s", name)
 			completed = False
 			self.progress = None

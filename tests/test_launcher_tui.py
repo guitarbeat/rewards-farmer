@@ -9,9 +9,11 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import launcher_controller as ctl
+import launcher_progress as progress
 import launcher_tui
 import daily_schedule
-from textual.widgets import Button, ListItem, RichLog, Static
+from textual.widgets import Button, Checkbox, ListItem, ProgressBar, RichLog, Select, Static
 
 _PAST_RUN = (
 	"=== Run #4 started 2026-01-02 11:00:00 ===\n"
@@ -21,12 +23,24 @@ _PAST_RUN = (
 
 
 class LauncherTuiTests(unittest.IsolatedAsyncioTestCase):
-	def _app(self, *, issues: list[str] | None = None, log_tail: str = "") -> launcher_tui.RewardsFarmerApp:
+	def _app(
+		self,
+		*,
+		issues: list[str] | None = None,
+		log_tail: str = "",
+		profiles: list[tuple[str, str]] | None = None,
+	) -> launcher_tui.RewardsFarmerApp:
+		detected_profiles = (
+			profiles
+			if profiles is not None
+			else [("Default", "Default profile"), ("Profile 1", "Personal")]
+		)
 		self._patches = [
 			mock.patch("launcher_runtime.preflight_issues", return_value=list(issues or [])),
 			mock.patch("launcher_runtime.preflight_warnings", return_value=[]),
 			mock.patch("launcher_runtime.read_log_tail", return_value=log_tail),
 			mock.patch("launcher_runtime.readiness_summary", return_value="Ready to farm"),
+			mock.patch("launcher_runtime.detect_edge_profiles", return_value=detected_profiles),
 		]
 		for patcher in self._patches:
 			patcher.start()
@@ -103,6 +117,78 @@ class LauncherTuiTests(unittest.IsolatedAsyncioTestCase):
 			self.assertFalse(app.query_one("#run", Button).disabled)
 			self.assertTrue(app.query_one("#stop", Button).disabled)
 			self.assertFalse(app.controller.is_run_active())
+
+	async def test_profile_switching(self) -> None:
+		"""Selecting an Edge profile updates the select widget and controller env state."""
+		profiles = [
+			("Default", "Default profile"),
+			("Profile 1", "Personal account"),
+		]
+		app = self._app(profiles=profiles)
+		async with app.run_test(size=(100, 40)) as pilot:
+			await pilot.pause()
+			select = app.query_one("#profile-select", Select)
+			self.assertEqual(select.value, "Default")
+			self.assertEqual(app.controller.selected_profile, "Default")
+
+			select.value = "Profile 1"
+			await pilot.pause()
+			self.assertEqual(app.controller.selected_profile, "Profile 1")
+			self.assertEqual(app.controller.build_env()["REWARDS_EDGE_PROFILES"], "Profile 1")
+
+	async def test_task_toggle_state_propagation(self) -> None:
+		"""Toggling task checkboxes updates the controller enabled tasks and disables Run if empty."""
+		app = self._app()
+		async with app.run_test(size=(100, 40)) as pilot:
+			await pilot.pause()
+			run_btn = app.query_one("#run", Button)
+			self.assertFalse(run_btn.disabled)
+			self.assertTrue(app.controller.is_task_enabled("Visual search"))
+
+			cb_visual = app.query_one("#task-visual", Checkbox)
+			self.assertTrue(cb_visual.value)
+
+			await pilot.click("#task-visual")
+			await pilot.pause()
+			self.assertFalse(cb_visual.value)
+			self.assertFalse(app.controller.is_task_enabled("Visual search"))
+
+	async def test_stats_widget_updates(self) -> None:
+		"""Points counter and step progress bar dynamically update from controller snapshot."""
+		app = self._app()
+		async with app.run_test(size=(100, 40)) as pilot:
+			await pilot.pause()
+			points_widget = app.query_one("#stat-points", Static)
+			step_label = app.query_one("#active-step-label", Static)
+			step_bar = app.query_one("#active-step-bar", ProgressBar)
+
+			fake_rows = [
+				progress.StepRow("Bing daily set", "ok"),
+				progress.StepRow("Visual search", "running", "step 1/3"),
+			]
+			snap = ctl.LauncherSnapshot(
+				subtitle="Farming in progress",
+				status_text="Running step 2",
+				status_tone="running",
+				run_count_label="1 of 1",
+				setup_strip="Ready",
+				progress_summary="1 of 2 complete",
+				progress_rows=fake_rows,
+				running=True,
+				points_earned=150,
+				session_points=150,
+				active_step="Visual search",
+				active_step_detail="step 1/3",
+				search_delay_remaining=12.5,
+				daily_schedule_countdown="01:30:00",
+			)
+			app._on_state_changed(snap)
+			await pilot.pause()
+
+			self.assertIn("150", str(points_widget.content))
+			self.assertIn("Visual search", str(step_label.content))
+			self.assertEqual(step_bar.progress, 1)
+			self.assertEqual(step_bar.total, 2)
 
 
 if __name__ == "__main__":
