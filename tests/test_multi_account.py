@@ -144,6 +144,28 @@ class TestEdgeOptions(EnvironmentTestCase):
 
 		self.assertEqual(len(set(seen)), 2)
 
+	def test_anti_detection_and_popup_suppression_options(self):
+		account = accounts.Account(name="test", profile_name="Default", user_data_dir="/tmp/test_profile")
+		opts = browser.build_options(account)
+		args = opts.arguments
+
+		self.assertIn("--disable-blink-features=AutomationControlled", args)
+		self.assertIn("--no-first-run", args)
+		self.assertIn("--no-default-browser-check", args)
+
+		# Experimental options verification
+		exp = opts.experimental_options
+		self.assertIn("excludeSwitches", exp)
+		self.assertIn("enable-automation", exp["excludeSwitches"])
+		self.assertFalse(exp.get("useAutomationExtension", True))
+
+		prefs = exp.get("prefs", {})
+		self.assertEqual(prefs.get("profile.default_content_setting_values.notifications"), 2)
+		self.assertEqual(prefs.get("profile.default_content_setting_values.geolocation"), 2)
+		self.assertFalse(prefs.get("credentials_enable_service", True))
+		self.assertFalse(prefs.get("profile.password_manager_enabled", True))
+		self.assertFalse(prefs.get("autofill.profile_enabled", True))
+
 
 class RunLoopTestCase(EnvironmentTestCase):
 	"""main() drives real browsers, so both entry points are replaced here."""

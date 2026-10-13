@@ -49,6 +49,21 @@ def build_options(account: accounts.Account) -> webdriver.EdgeOptions:
 	options.add_experimental_option("excludeSwitches", ["enable-automation"])
 	options.add_experimental_option("useAutomationExtension", False)
 	options.add_argument("--disable-blink-features=AutomationControlled")
+	options.add_argument("--no-first-run")
+	options.add_argument("--no-default-browser-check")
+
+	# Suppress intrusive popups (notification permissions, geolocation, password save prompts)
+	options.add_experimental_option(
+		"prefs",
+		{
+			"profile.default_content_setting_values.notifications": 2,
+			"profile.default_content_setting_values.geolocation": 2,
+			"credentials_enable_service": False,
+			"profile.password_manager_enabled": False,
+			"autofill.profile_enabled": False,
+		},
+	)
+
 	options.add_argument(f"--user-data-dir={account.user_data_dir}")
 	options.add_argument(f"--profile-directory={account.profile_name}")
 
