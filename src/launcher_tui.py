@@ -60,6 +60,25 @@ def _icons() -> dict[str, str]:
 	return _ASCII_ICONS
 
 
+_UNICODE_DASHBOARD = {
+	"step": "▶",
+	"delay": "⏳",
+	"daily": "⏰",
+}
+_ASCII_DASHBOARD = {
+	"step": ">",
+	"delay": "[delay]",
+	"daily": "[daily]",
+}
+
+
+def _dash_glyphs() -> dict[str, str]:
+	encoding = (getattr(sys.stdout, "encoding", None) or "").lower().replace("-", "")
+	if encoding in {"utf8", "utf16", "cp65001"}:
+		return _UNICODE_DASHBOARD
+	return _ASCII_DASHBOARD
+
+
 class RewardsFarmerApp(App):
 	"""Launcher screens: configuration, live metrics, progress, and logs."""
 
@@ -290,6 +309,19 @@ class RewardsFarmerApp(App):
 		padding: 0;
 	}
 
+	#log-banner {
+		display: none;
+		height: 1;
+		padding: 0 1;
+		background: $warning 25%;
+		color: $warning;
+		text-style: bold;
+	}
+
+	#log-banner.active {
+		display: block;
+	}
+
 	#log-panel {
 		height: 1fr;
 		margin: 0;
@@ -403,11 +435,7 @@ class RewardsFarmerApp(App):
 		self._quit_after_stop = False
 		self._schedule_line = daily_schedule.status_line(None)
 
-	def compose(self) -> ComposeResult:
-		yield Header()
-		yield Static("", id="setup")
-		yield Static("", id="schedule")
-
+	def _build_profile_options(self) -> tuple[list[tuple[str, str]], str]:
 		profiles = self.controller.get_available_profiles()
 		if not profiles:
 			profiles = [("Default", "Default profile")]
@@ -420,6 +448,14 @@ class RewardsFarmerApp(App):
 			initial_profile = "Default"
 		else:
 			initial_profile = profile_options[0][1]
+		return profile_options, initial_profile
+
+	def compose(self) -> ComposeResult:
+		yield Header()
+		yield Static("", id="setup")
+		yield Static("", id="schedule")
+
+		profile_options, initial_profile = self._build_profile_options()
 
 		with Horizontal(id="main-view"):
 			with Vertical(id="sidebar-pane"):
@@ -467,6 +503,7 @@ class RewardsFarmerApp(App):
 
 				with TabbedContent(id="panel-tabs"):
 					with TabPane("Console Log", id="tab-log"):
+						yield Static("", id="log-banner")
 						with VerticalScroll(id="log-panel"):
 							yield RichLog(id="log", markup=False, wrap=True, highlight=False)
 					with TabPane("Past Runs", id="tab-history"):
@@ -492,17 +529,9 @@ class RewardsFarmerApp(App):
 		# Populate #profile-select
 		try:
 			select = self.query_one("#profile-select", Select)
-			profiles = self.controller.get_available_profiles()
-			if not profiles:
-				profiles = [("Default", "Default profile")]
-			options = [(label, name) for name, label in profiles]
-			if len(profiles) > 1:
-				options = [("All Profiles", "all")] + options
+			options, initial_profile = self._build_profile_options()
 			select.set_options(options)
-			if self.controller.selected_profile:
-				select.value = self.controller.selected_profile
-			elif any(name == "Default" for name, _ in profiles):
-				select.value = "Default"
+			select.value = initial_profile
 		except NoMatches:
 			pass
 
@@ -601,8 +630,6 @@ class RewardsFarmerApp(App):
 
 	def _flush_logs(self) -> None:
 		if self._viewing_run is not None or not self._pending_logs:
-			if self._viewing_run is not None:
-				self._pending_logs.clear()
 			return
 		log = self.query_one("#log", RichLog)
 		for line, _tag in self._pending_logs:
@@ -633,6 +660,10 @@ class RewardsFarmerApp(App):
 			run.label = snapshot.run_button_text
 			self.query_one("#stop", Button).disabled = not snapshot.stop_enabled
 
+			# Dynamic Daily button label
+			is_armed = daily_schedule.load_plan() is not None
+			self.query_one("#daily", Button).label = "Undaily" if is_armed else "Daily"
+
 			# Live Dashboard widgets
 			self._paint_dashboard(snapshot)
 
@@ -645,6 +676,7 @@ class RewardsFarmerApp(App):
 			return
 
 	def _paint_dashboard(self, snapshot: controller.LauncherSnapshot) -> None:
+		glyphs = _dash_glyphs()
 		try:
 			pts_w = self.query_one("#stat-points", Static)
 			pts_w.update(
@@ -659,13 +691,13 @@ class RewardsFarmerApp(App):
 			if snapshot.running:
 				step_name = snapshot.active_step or snapshot.status_text or "Running…"
 				detail = f": {snapshot.active_step_detail}" if snapshot.active_step_detail else ""
-				step_label.update(f"▶ {step_name}{detail}")
+				step_label.update(f"{glyphs['step']} {step_name}{detail}")
 				step_label.set_classes("step-active")
 			elif snapshot.status_text and snapshot.status_text != "Ready to run":
-				step_label.update(f"▶ {snapshot.status_text}")
+				step_label.update(f"{glyphs['step']} {snapshot.status_text}")
 				step_label.set_classes("step-active")
 			else:
-				step_label.update("▶ Ready")
+				step_label.update(f"{glyphs['step']} Ready")
 				step_label.set_classes("step-idle")
 		except NoMatches:
 			pass
@@ -680,10 +712,10 @@ class RewardsFarmerApp(App):
 		try:
 			delay_widget = self.query_one("#timer-search-delay", Static)
 			if snapshot.search_delay_remaining is not None and snapshot.search_delay_remaining > 0:
-				delay_widget.update(f"⏳ Delay: {snapshot.search_delay_remaining:.1f}s")
+				delay_widget.update(f"{glyphs['delay']} Delay: {snapshot.search_delay_remaining:.1f}s")
 				delay_widget.set_classes("timer-active")
 			else:
-				delay_widget.update("⏳ Delay: idle")
+				delay_widget.update(f"{glyphs['delay']} Delay: idle")
 				delay_widget.set_classes("timer-idle")
 		except NoMatches:
 			pass
@@ -691,13 +723,13 @@ class RewardsFarmerApp(App):
 		try:
 			sched_widget = self.query_one("#timer-schedule-window", Static)
 			if snapshot.daily_schedule_countdown:
-				sched_widget.update(f"⏰ Daily: {snapshot.daily_schedule_countdown}")
+				sched_widget.update(f"{glyphs['daily']} Daily: {snapshot.daily_schedule_countdown}")
 				sched_widget.set_classes("timer-active")
 			elif daily_schedule.claimed_today():
-				sched_widget.update("⏰ Daily: completed today")
+				sched_widget.update(f"{glyphs['daily']} Daily: completed today")
 				sched_widget.set_classes("timer-idle")
 			else:
-				sched_widget.update("⏰ Daily: idle")
+				sched_widget.update(f"{glyphs['daily']} Daily: idle")
 				sched_widget.set_classes("timer-idle")
 		except NoMatches:
 			pass
@@ -762,6 +794,12 @@ class RewardsFarmerApp(App):
 		log.clear()
 		for line in text.splitlines():
 			log.write(line)
+		try:
+			banner = self.query_one("#log-banner", Static)
+			banner.update(f"◀ Viewing Run #{run_number} (historical) — press 'l' or click here to return to live log")
+			banner.add_class("active")
+		except NoMatches:
+			pass
 		self._set_log_visible(True)
 		try:
 			self.query_one("#panel-tabs", TabbedContent).active = "tab-log"
@@ -780,10 +818,17 @@ class RewardsFarmerApp(App):
 			tabs = self.query_one("#panel-tabs", TabbedContent)
 			if self._viewing_run is not None:
 				self._viewing_run = None
+				try:
+					banner = self.query_one("#log-banner", Static)
+					banner.remove_class("active")
+					banner.update("")
+				except NoMatches:
+					pass
 				log = self.query_one("#log", RichLog)
 				log.clear()
 				for line in self.controller.get_log_text().splitlines()[-200:]:
 					log.write(line)
+				self._flush_logs()
 				self._set_log_visible(True)
 				tabs.active = "tab-log"
 				return
@@ -800,7 +845,14 @@ class RewardsFarmerApp(App):
 		if not self.controller.enabled_tasks:
 			self.notify("No tasks enabled — select at least one task to run.", severity="warning")
 			return
-		self._viewing_run = None
+		if self._viewing_run is not None:
+			self._viewing_run = None
+			try:
+				banner = self.query_one("#log-banner", Static)
+				banner.remove_class("active")
+				banner.update("")
+			except NoMatches:
+				pass
 		error = self.controller.start_run()
 		if error:
 			title = "Setup required" if any(word in error for word in ("Setup", "Missing", "data-dir")) else "Could not start"
@@ -822,6 +874,10 @@ class RewardsFarmerApp(App):
 			return
 		self._schedule_line = result.status_line
 		self.query_one("#schedule", Static).update(result.status_line)
+		try:
+			self.query_one("#daily", Button).label = "Undaily"
+		except NoMatches:
+			pass
 		self.notify("Daily trigger armed.", timeout=4)
 
 	def action_remove_daily(self) -> None:
@@ -832,6 +888,10 @@ class RewardsFarmerApp(App):
 			return
 		self._schedule_line = daily_schedule.status_line(None)
 		self.query_one("#schedule", Static).update(self._schedule_line)
+		try:
+			self.query_one("#daily", Button).label = "Daily"
+		except NoMatches:
+			pass
 		self.notify(message, timeout=4)
 
 	def action_stop(self) -> None:
@@ -846,6 +906,10 @@ class RewardsFarmerApp(App):
 			return
 		self.exit()
 
+	def on_click(self, event) -> None:
+		if getattr(event.widget, "id", None) == "log-banner" and self._viewing_run is not None:
+			self.action_toggle_log()
+
 	def on_button_pressed(self, event: Button.Pressed) -> None:
 		button_id = event.button.id
 		if button_id == "run":
@@ -854,8 +918,10 @@ class RewardsFarmerApp(App):
 			self.action_stop()
 		elif button_id == "open-logs":
 			self.controller.open_logs_folder()
+			self.notify("Logs folder opened in Explorer", timeout=3)
 		elif button_id == "open-profile":
 			self.controller.open_profile_folder()
+			self.notify("Profile folder opened in Explorer", timeout=3)
 		elif button_id == "clear-log":
 			error = self.controller.clear_log()
 			if error:
@@ -863,10 +929,20 @@ class RewardsFarmerApp(App):
 				return
 			self._viewing_run = None
 			self._history_key = ""
+			try:
+				banner = self.query_one("#log-banner", Static)
+				banner.remove_class("active")
+				banner.update("")
+			except NoMatches:
+				pass
 			self.query_one("#log", RichLog).clear()
+			self.notify("Log history cleared", timeout=3)
 			self._paint()
 		elif button_id == "daily":
-			self.action_arm_daily()
+			if daily_schedule.load_plan() is not None:
+				self.action_remove_daily()
+			else:
+				self.action_arm_daily()
 
 	def on_list_view_selected(self, event: ListView.Selected) -> None:
 		name = event.item.name or ""
