@@ -65,6 +65,7 @@ class Labels:
 		"jetzt suchen",
 		"aktivieren",
 	)
+	MOBILE_SEARCH = "mobile search"
 
 
 class ElementSelectionUtils:
@@ -549,6 +550,30 @@ return (
 			return int(match.group(1).replace(",", "")), int(match.group(2).replace(",", ""))
 
 		raise NoSuchElementException("no points fraction found in the breakdown sidebar")
+
+	def get_mobile_search_points_on_points_breakdown(self):
+		"""Return (earned, max) for the Mobile search row of the breakdown panel."""
+		sidebar = self.get_sidebar_section()
+		text = sidebar.text or ""
+		lines = [line.strip() for line in text.splitlines()]
+
+		def parse(candidate: str):
+			match = re.fullmatch(r"([\d,]+)\s*/\s*([\d,]+)", candidate)
+
+			if not match:
+				return None
+
+			return int(match.group(1).replace(",", "")), int(match.group(2).replace(",", ""))
+
+		for index, line in enumerate(lines):
+			if Labels.MOBILE_SEARCH in line.lower():
+				for candidate in lines[index + 1:index + 3]:
+					parsed = parse(candidate)
+
+					if parsed:
+						return parsed
+
+		raise NoSuchElementException("no mobile search row found in the breakdown sidebar")
 
 	# ------------------------------------------------------------------
 	# bonus

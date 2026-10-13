@@ -132,6 +132,26 @@ class SearchPointsRow(unittest.TestCase):
 				sidebar_driver("Points breakdown\nLoading...")
 			).get_points_earned_from_searches_on_points_breakdown()
 
+	def test_reads_the_mobile_search_row(self):
+		panel = "\n".join([
+			"Points breakdown",
+			"Bing search",
+			"150/150",
+			"Mobile search",
+			"60/100",
+		])
+		earned, maximum = selectors_for(
+			sidebar_driver(panel)
+		).get_mobile_search_points_on_points_breakdown()
+		self.assertEqual((earned, maximum), (60, 100))
+
+	def test_raises_when_no_mobile_search_row(self):
+		panel = "Points breakdown\nBing search\n150/150"
+		with self.assertRaises(NoSuchElementException):
+			selectors_for(
+				sidebar_driver(panel)
+			).get_mobile_search_points_on_points_breakdown()
+
 
 class DuplicatedContainer(unittest.TestCase):
 	"""Some sections are emitted twice for responsive layout."""
