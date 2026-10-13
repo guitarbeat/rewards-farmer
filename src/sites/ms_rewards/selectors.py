@@ -298,6 +298,65 @@ class ElementSelectionUtils:
 		return container.find_elements(By.TAG_NAME, "a")
 
 	# ------------------------------------------------------------------
+	# quests (punch cards)
+	# ------------------------------------------------------------------
+
+	def get_quest_links(self):
+		"""Links from the quests section, each pointing at a punch card page."""
+		try:
+			container = self._container_by_id("quests")
+		except NoSuchElementException:
+			return []
+
+		links = []
+
+		for link in container.find_elements(By.TAG_NAME, "a"):
+			try:
+				if "/earn/quest/" in (link.get_dom_attribute("href") or ""):
+					links.append(link)
+			except StaleElementReferenceException:
+				continue
+
+		return links
+
+	def get_quest_activity_links(self):
+		"""Unlocked activity links on an open punch card page.
+
+		Not every activity points at `/search`, some link to the Bing home page
+		with tracking parameters, so this matches on the host. A card shows its
+		next activity before it unlocks and marks it `aria-disabled="true"`,
+		because it releases one punch per 24 hours, and that link must not be
+		clicked.
+
+		The search stays inside `<main>`. The footer carries
+		`https://www.bing.com/?rwgbopen=1` and a language link, and a page wide
+		host match clicked both on every run.
+		"""
+		containers = self.driver.find_elements(By.TAG_NAME, "main")
+		scope = containers[0] if containers else self.driver
+
+		links = []
+
+		for link in scope.find_elements(By.TAG_NAME, "a"):
+			try:
+				href = link.get_dom_attribute("href") or ""
+
+				if "bing.com" not in href or "rewards.bing.com" in href:
+					continue
+
+				if not (link.text or "").strip():
+					continue
+
+				if (link.get_dom_attribute("aria-disabled") or "").lower() == "true":
+					continue
+
+				links.append(link)
+			except StaleElementReferenceException:
+				continue
+
+		return links
+
+	# ------------------------------------------------------------------
 	# visual search
 	# ------------------------------------------------------------------
 

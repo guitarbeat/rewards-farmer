@@ -8,6 +8,7 @@ AUTOMATION_TASK_STEPS: tuple[str, ...] = (
 	"Explore on Bing",
 	"Visual search",
 	"Misc cards",
+	"Quests",
 	"Required searches",
 	"Bonus points",
 )

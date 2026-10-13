@@ -48,6 +48,7 @@ TASK_TOGGLE_MAP: dict[str, str] = {
 	"task-explore": "Explore on Bing",
 	"task-visual": "Visual search",
 	"task-misc": "Misc cards",
+	"task-quests": "Quests",
 	"task-searches": "Required searches",
 	"task-bonus": "Bonus points",
 }
@@ -474,6 +475,7 @@ class RewardsFarmerApp(App):
 						yield Checkbox("Explore", value=True, id="task-explore", compact=True)
 						yield Checkbox("Visual", value=True, id="task-visual", compact=True)
 						yield Checkbox("Misc Cards", value=True, id="task-misc", compact=True)
+						yield Checkbox("Quests", value=True, id="task-quests", compact=True)
 						yield Checkbox("Searches", value=True, id="task-searches", compact=True)
 						yield Checkbox("Bonus", value=True, id="task-bonus", compact=True)
 

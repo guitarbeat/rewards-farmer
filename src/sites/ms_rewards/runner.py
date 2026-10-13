@@ -21,6 +21,7 @@ from sites.ms_rewards.tasks import (
 	DailySetTasks,
 	ExploreTasks,
 	MiscCardTasks,
+	QuestTasks,
 	SearchTasks,
 	VisualSearchTasks,
 )
@@ -69,6 +70,7 @@ class RewardsTaskUtils(
 	ExploreTasks,
 	VisualSearchTasks,
 	MiscCardTasks,
+	QuestTasks,
 	SearchTasks,
 	BonusTasks,
 ):
@@ -114,6 +116,7 @@ class RewardsTaskUtils(
 			"Explore on Bing": self.complete_explore_on_bing_tasks,
 			"Visual search": self.complete_visual_search,
 			"Misc cards": self.complete_misc_cards,
+			"Quests": self.complete_quests,
 			"Required searches": self.complete_required_searches,
 			"Bonus points": self.claim_bonus_points,
 		}

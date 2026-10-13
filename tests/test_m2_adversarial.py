@@ -105,8 +105,8 @@ class Milestone2AdversarialTests(unittest.IsolatedAsyncioTestCase):
 			run_btn = app.query_one("#run", Button)
 			self.assertFalse(run_btn.disabled)
 
-			# All 6 canonical tasks should initially be enabled in controller
-			self.assertEqual(len(app.controller.enabled_tasks), 6)
+			# All 7 canonical tasks should initially be enabled in controller
+			self.assertEqual(len(app.controller.enabled_tasks), 7)
 
 			# Toggle each checkbox off via pilot interaction
 			checkbox_ids = [
@@ -114,6 +114,7 @@ class Milestone2AdversarialTests(unittest.IsolatedAsyncioTestCase):
 				("task-explore", "Explore on Bing"),
 				("task-visual", "Visual search"),
 				("task-misc", "Misc cards"),
+				("task-quests", "Quests"),
 				("task-searches", "Required searches"),
 				("task-bonus", "Bonus points"),
 			]
@@ -155,7 +156,7 @@ class Milestone2AdversarialTests(unittest.IsolatedAsyncioTestCase):
 					await pilot.pause()
 					self.assertTrue(app.controller.is_task_enabled(task_name))
 
-			self.assertEqual(len(app.controller.enabled_tasks), 6)
+			self.assertEqual(len(app.controller.enabled_tasks), 7)
 			self.assertFalse(run_btn.disabled)
 
 	async def test_profile_selection_via_pilot(self) -> None:

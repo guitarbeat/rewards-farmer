@@ -515,7 +515,7 @@ class RunProgressTests(unittest.TestCase):
 		self.assertEqual(run.task_states["Bing daily set"].state, "ok")
 		self.assertEqual(run.task_states["Explore on Bing"].state, "running")
 		self.assertEqual(run.search_quota, "18/30")
-		self.assertEqual(run.progress_summary(), "2 of 7 complete")
+		self.assertEqual(run.progress_summary(), f"2 of {run.total_steps()} complete")
 
 	def test_ok_advances_to_next_task(self) -> None:
 		run = progress.RunProgress()
@@ -545,11 +545,11 @@ class RunProgressTests(unittest.TestCase):
 	def test_progress_summary_before_and_during_run(self) -> None:
 		run = progress.RunProgress()
 		run.active = False
-		self.assertIn("7 steps", run.progress_summary())
+		self.assertIn(f"{run.total_steps()} steps", run.progress_summary())
 		run.reset()
 		run.update_from_line("[STEP] Starting browser")
 		run.update_from_line("[OK] Bing daily set")
-		self.assertEqual(run.progress_summary(), "1 of 7 complete")
+		self.assertEqual(run.progress_summary(), f"1 of {run.total_steps()} complete")
 
 	def test_points_earned_calculated_from_search_quota_progression(self) -> None:
 		run = progress.RunProgress()

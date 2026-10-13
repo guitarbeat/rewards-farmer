@@ -592,6 +592,10 @@ class RunnerTaskFilterIntegrationTests(unittest.TestCase):
 				self.executed.append("Misc cards")
 				return True
 
+			def complete_quests(self) -> bool:
+				self.executed.append("Quests")
+				return True
+
 			def complete_required_searches(self) -> bool:
 				self.executed.append("Required searches")
 				return True
