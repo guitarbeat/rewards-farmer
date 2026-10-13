@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import queue
 import re
@@ -11,9 +12,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Iterable
 
+logger = logging.getLogger(__name__)
+
 import accounts
 import launcher_progress as progress
 import launcher_runtime as runtime
+import notifications
 import site_registry
 from task_steps import AUTOMATION_TASK_STEPS
 
@@ -431,6 +435,23 @@ class LauncherController:
 			stopped_by_user=stopped_by_user,
 		)
 		self._history_cache = None
+
+		# Dispatch webhook notification asynchronously if configured
+		try:
+			notifications.send_webhook_notification(
+				title=f"Rewards Farmer - Run #{finished_run}",
+				description=status_text,
+				status="SUCCESS" if status_tone == "success" else ("WARNING" if status_tone == "warning" else "FAILURE"),
+				points_earned=self.run_progress.points_earned,
+				profile=self.selected_profile,
+				extra_fields=[
+					("Exit Code", str(exit_code)),
+					("Tasks Summary", self.run_progress.progress_summary()),
+				],
+			)
+		except Exception as exc:
+			logger.debug("Webhook notification failed: %s", exc)
+
 		self._emit_state(status_text=status_text, status_tone=status_tone)
 
 	def _reset_progress_for_run(self) -> None:

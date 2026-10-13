@@ -8,6 +8,7 @@ import accounts
 import browser
 import daily_completion
 import desktop_utils
+import notifications
 import profile_picker
 import queries
 import site_registry
@@ -164,6 +165,19 @@ def main() -> int:
 			pass
 
 	desktop_utils.cleanup_virtual_desktop()
+
+	try:
+		notifications.send_webhook_notification(
+			title="Rewards Farmer - CLI Run",
+			description=f"Finished running {started}/{len(configured)} account(s).",
+			status="SUCCESS" if started else "FAILURE",
+			extra_fields=[
+				("Configured Accounts", str(len(configured))),
+				("Ran Accounts", str(started)),
+			],
+		)
+	except Exception as exc:
+		logger.debug("Webhook notification failed: %s", exc)
 
 	return 0 if started else 1
 
