@@ -6,6 +6,24 @@
       "sourceType": "github",
       "skillPath": ".agents/skills/impeccable/SKILL.md",
       "computedHash": "de0ad62df4a20451e6f9715b6861b068ac8f558b1829a5c7b947c58ae94f0c6f"
+    },
+    "textual-builder": {
+      "source": "ypares/agent-skills",
+      "sourceType": "github",
+      "skillPath": "textual-builder/SKILL.md",
+      "computedHash": "45fbdf283545f9e8c6d9f54b686e11acafcfb887fcebf3a51b36e06dc5659964"
+    },
+    "textual-tui": {
+      "source": "aperepel/textual-tui-skill",
+      "sourceType": "github",
+      "skillPath": "skill/SKILL.md",
+      "computedHash": "4580ef0be1a208fa03651aa36f027930ddaa6324ed3710dabcdf1c1b76a5ba6f"
+    },
+    "tui-design": {
+      "source": "hyperb1iss/hyperskills",
+      "sourceType": "github",
+      "skillPath": "skills/tui-design/SKILL.md",
+      "computedHash": "2e3d87d55f744a46891c90f916e17560d792b9f0527cffcecb4e308ad99c456e"
     }
   }
 }

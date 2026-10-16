@@ -60,50 +60,71 @@ class SettingsModal(ModalScreen[bool]):
 	DEFAULT_CSS = """
 	SettingsModal {
 		align: center middle;
-		background: rgba(0, 0, 0, 0.7);
+		background: rgba(0, 0, 0, 0.75);
 	}
 
 	#settings-dialog {
 		width: 68;
 		height: auto;
 		max-height: 90%;
-		border: round $primary;
-		background: $surface;
+		border: round #58a6ff;
+		background: #161b22;
+		color: #e6edf3;
 		padding: 1 2;
 	}
 
 	#settings-title {
 		text-align: center;
 		text-style: bold;
-		color: $primary;
+		color: #58a6ff;
 		margin-bottom: 1;
 	}
 
 	.settings-label {
-		color: $text;
+		color: #f0f6fc;
 		text-style: bold;
 		margin-top: 1;
 		margin-bottom: 0;
 	}
 
 	.settings-desc {
-		color: $text-muted;
+		color: #8b949e;
 		margin-bottom: 0;
 	}
 
 	#settings-dialog Input {
 		margin-top: 0;
 		margin-bottom: 0;
+		background: #0d1117;
+		border: round #30363d;
+		color: #f0f6fc;
+	}
+
+	#settings-dialog Input:focus {
+		border: round #58a6ff;
 	}
 
 	#settings-dialog Select {
 		margin-top: 0;
 		margin-bottom: 0;
+		background: #0d1117;
+		border: round #30363d;
+		color: #f0f6fc;
+	}
+
+	#settings-dialog Select:focus {
+		border: round #58a6ff;
 	}
 
 	#settings-dialog Checkbox {
 		margin-top: 0;
 		margin-bottom: 0;
+		color: #8b949e;
+	}
+
+	#settings-dialog Checkbox.-on {
+		color: #3fb950;
+		text-style: bold;
 	}
 
 	#settings-buttons {
@@ -114,6 +135,25 @@ class SettingsModal(ModalScreen[bool]):
 
 	#settings-buttons Button {
 		margin-left: 1;
+		min-width: 10;
+		background: #21262d;
+		color: #c9d1d9;
+		border: none;
+	}
+
+	#settings-buttons Button:hover {
+		background: #30363d;
+		color: #f0f6fc;
+	}
+
+	#settings-buttons #btn-save {
+		background: #238636;
+		color: #ffffff;
+		text-style: bold;
+	}
+
+	#settings-buttons #btn-save:hover {
+		background: #2ea043;
 	}
 	"""
 
@@ -607,6 +647,12 @@ class RewardsFarmerApp(App):
 	#history ListItem:hover {
 		background: #161b22;
 		color: #58a6ff;
+	}
+
+	#history ListItem.-selected, #history:focus > ListItem.--highlight {
+		background: #21262d;
+		color: #58a6ff;
+		text-style: bold;
 	}
 
 	/* Bottom status bar */
