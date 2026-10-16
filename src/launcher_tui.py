@@ -365,14 +365,24 @@ class RewardsFarmerApp(App):
 		layout: horizontal;
 		height: 1fr;
 		width: 100%;
-		padding: 0;
+		padding: 0 1;
 		background: #0d1117;
 	}
 
 	#sidebar-pane {
 		width: 38;
 		height: 1fr;
-		padding: 0 1 0 0;
+		background: #161b22;
+		border: round #30363d;
+		border-title-align: left;
+		border-title-style: bold;
+		border-title-color: #58a6ff;
+		padding: 0 1;
+		margin-right: 1;
+	}
+
+	#sidebar-pane:focus-within {
+		border: round #58a6ff;
 	}
 
 	#content-pane {
@@ -381,26 +391,35 @@ class RewardsFarmerApp(App):
 		padding: 0;
 	}
 
-	/* Elevated modern panel framing */
-	#panel-config, #panel-dashboard, #panel-progress {
+	/* Sidebar Sections - Seamless integration inside #sidebar-pane */
+	#panel-config {
+		height: auto;
+		border: none;
+		background: transparent;
+		padding: 0;
+		margin: 0;
+	}
+
+	#panel-dashboard {
+		height: auto;
+		border: none;
+		border-top: solid #21262d;
+		background: transparent;
+		padding: 0;
+		margin-top: 1;
+	}
+
+	/* Execution Pipeline & Tabs */
+	#panel-progress {
 		border: round #30363d;
 		border-title-align: left;
 		border-title-style: bold;
-		border-title-color: #8b949e;
+		border-title-color: #bc8cff;
 		background: #161b22;
 		height: auto;
+		max-height: 10;
 		margin-bottom: 1;
 		padding: 0 1;
-	}
-
-	#panel-config:focus-within, #panel-dashboard:focus-within {
-		border: round #58a6ff;
-		border-title-color: #58a6ff;
-	}
-
-	#panel-progress {
-		max-height: 10;
-		border-title-color: #bc8cff;
 	}
 
 	#panel-progress:focus-within {
@@ -630,17 +649,35 @@ class RewardsFarmerApp(App):
 		height: 1;
 		padding: 0 2;
 		color: #8b949e;
+		background: transparent;
+		border: none;
 	}
 
 	TabbedContent Tab:hover {
 		color: #f0f6fc;
+		background: #21262d;
 	}
 
 	TabbedContent Tab.-active {
 		color: #58a6ff;
 		text-style: bold;
 		background: #21262d;
-		border-bottom: heavy #58a6ff;
+		border: none;
+	}
+
+	/* Modern subtle scrollbar */
+	ScrollBar {
+		background: transparent;
+		color: #30363d;
+		width: 1;
+	}
+
+	ScrollBar:hover {
+		color: #58a6ff;
+	}
+
+	ScrollBarCorner {
+		background: transparent;
 	}
 
 	#log-banner {
@@ -660,7 +697,7 @@ class RewardsFarmerApp(App):
 		height: 1fr;
 		margin: 0;
 		border: none;
-		scrollbar-size: 1 1;
+		scrollbar-size-vertical: 1;
 	}
 
 	#log {
@@ -680,6 +717,7 @@ class RewardsFarmerApp(App):
 		height: 1fr;
 		margin: 0;
 		background: #0d1117;
+		scrollbar-size-vertical: 1;
 	}
 
 	#history ListItem {
@@ -835,10 +873,10 @@ class RewardsFarmerApp(App):
 		btn_quit = "✕ Quit" if _is_unicode_supported() else "Quit"
 
 		with Horizontal(id="main-view"):
-			with VerticalScroll(id="sidebar-pane"):
-				cfg = Container(id="panel-config")
-				cfg.border_title = " Controls & Tasks "
-				with cfg:
+			sidebar = VerticalScroll(id="sidebar-pane")
+			sidebar.border_title = " Control Center "
+			with sidebar:
+				with Container(id="panel-config"):
 					yield Select[str](
 						profile_options,
 						value=initial_profile,
@@ -866,9 +904,8 @@ class RewardsFarmerApp(App):
 						yield Checkbox("Searches", value=True, id="task-searches", compact=True)
 						yield Checkbox("Bonus", value=True, id="task-bonus", compact=True)
 
-				dash = Container(id="panel-dashboard")
-				dash.border_title = " Session Telemetry "
-				with dash:
+				with Container(id="panel-dashboard"):
+					yield Static("Session Telemetry", classes="task-header")
 					yield Static("Points: +0  ·  Session: +0", id="stat-points")
 					yield Static("▶ Ready", id="active-step-label")
 					yield ProgressBar(id="active-step-bar", show_eta=False, show_percentage=True)
