@@ -233,9 +233,15 @@ TASK_TOGGLE_MAP: dict[str, str] = {
 }
 
 
-def _icons() -> dict[str, str]:
+def _is_unicode_supported() -> bool:
+	if os.environ.get("WT_SESSION") or os.environ.get("TERM_PROGRAM"):
+		return True
 	encoding = (getattr(sys.stdout, "encoding", None) or "").lower().replace("-", "")
-	if encoding in {"utf8", "utf16", "cp65001"}:
+	return encoding in {"utf8", "utf16", "cp65001"}
+
+
+def _icons() -> dict[str, str]:
+	if _is_unicode_supported():
 		return _UNICODE_ICONS
 	return _ASCII_ICONS
 
@@ -253,8 +259,7 @@ _ASCII_DASHBOARD = {
 
 
 def _dash_glyphs() -> dict[str, str]:
-	encoding = (getattr(sys.stdout, "encoding", None) or "").lower().replace("-", "")
-	if encoding in {"utf8", "utf16", "cp65001"}:
+	if _is_unicode_supported():
 		return _UNICODE_DASHBOARD
 	return _ASCII_DASHBOARD
 
@@ -267,12 +272,31 @@ class RewardsFarmerApp(App):
 	Screen {
 		layout: vertical;
 		overflow: hidden;
+		background: #0d1117;
+		color: #e6edf3;
 	}
 
-	#setup, #schedule {
+	/* Top command bar */
+	#top-bar {
 		height: 1;
+		width: 100%;
 		padding: 0 1;
-		color: $text-muted;
+		background: #161b22;
+		color: #8b949e;
+	}
+
+	#setup {
+		color: #8b949e;
+		padding: 0 1;
+		width: 1fr;
+	}
+
+	#schedule {
+		color: #58a6ff;
+		padding: 0 1;
+		width: auto;
+		text-style: bold;
+		text-align: right;
 	}
 
 	ToastRack {
@@ -288,15 +312,17 @@ class RewardsFarmerApp(App):
 		max-width: 100%;
 	}
 
-	/* Two-column layout */
+	/* Main Two-column layout */
 	#main-view {
 		layout: horizontal;
 		height: 1fr;
 		width: 100%;
+		padding: 0;
+		background: #0d1117;
 	}
 
 	#sidebar-pane {
-		width: 38;
+		width: 44;
 		height: 1fr;
 		padding: 0 1 0 0;
 	}
@@ -307,32 +333,40 @@ class RewardsFarmerApp(App):
 		padding: 0;
 	}
 
-	/* Cohesive panel framing */
+	/* Elevated modern panel framing */
 	#panel-config, #panel-dashboard, #panel-progress {
-		border: round $surface-lighten-2;
+		border: round #30363d;
 		border-title-align: left;
 		border-title-style: bold;
-		border-title-color: $text-muted;
+		border-title-color: #8b949e;
+		background: #161b22;
 		height: auto;
 		margin-bottom: 0;
 		padding: 0 1;
 	}
 
 	#panel-config:focus-within, #panel-dashboard:focus-within {
-		border: round $primary;
-		border-title-color: $primary;
+		border: round #58a6ff;
+		border-title-color: #58a6ff;
 	}
 
 	#panel-progress {
-		max-height: 8;
+		max-height: 9;
+		border-title-color: #bc8cff;
+	}
+
+	#panel-progress:focus-within {
+		border: round #bc8cff;
 	}
 
 	/* Profile selection */
 	#profile-select {
 		height: auto;
-		margin: 0;
+		margin: 0 0 1 0;
 		padding: 0;
 		border: none;
+		background: #21262d;
+		color: #f0f6fc;
 	}
 
 	/* Task toggle grid */
@@ -348,9 +382,20 @@ class RewardsFarmerApp(App):
 	#task-toggles-grid Checkbox {
 		height: 1;
 		margin: 0;
-		padding: 0;
+		padding: 0 1;
 		background: transparent;
 		border: none;
+		color: #8b949e;
+	}
+
+	#task-toggles-grid Checkbox:hover {
+		color: #f0f6fc;
+		background: #21262d;
+	}
+
+	#task-toggles-grid Checkbox.-on {
+		color: #3fb950;
+		text-style: bold;
 	}
 
 	/* Telemetry & metrics styling */
@@ -360,30 +405,30 @@ class RewardsFarmerApp(App):
 	}
 
 	.points-positive {
-		color: $success;
+		color: #3fb950;
 		text-style: bold;
 	}
 
 	.points-zero {
-		color: $text-muted;
+		color: #8b949e;
 	}
 
 	.step-active {
-		color: $accent;
+		color: #58a6ff;
 		text-style: bold;
 	}
 
 	.step-idle {
-		color: $text-muted;
+		color: #8b949e;
 	}
 
 	.timer-active {
-		color: $warning;
+		color: #d29922;
 		text-style: bold;
 	}
 
 	.timer-idle {
-		color: $text-muted;
+		color: #8b949e;
 	}
 
 	#active-step-bar {
@@ -396,10 +441,10 @@ class RewardsFarmerApp(App):
 	/* Action buttons */
 	#actions {
 		layout: grid;
-		grid-size: 4 2;
-		grid-columns: 1fr 1fr 1fr 1fr;
-		height: 2;
-		margin: 0;
+		grid-size: 2 4;
+		grid-columns: 1fr 1fr;
+		height: 4;
+		margin-top: 1;
 		padding: 0;
 	}
 
@@ -408,44 +453,46 @@ class RewardsFarmerApp(App):
 		margin: 0;
 		padding: 0 1;
 		border: none;
-		min-width: 5;
-		background: $surface-lighten-1;
-		color: $text;
+		min-width: 6;
+		background: #21262d;
+		color: #c9d1d9;
+		text-align: center;
 	}
 
 	#actions Button:hover {
-		background: $surface-lighten-2;
+		background: #30363d;
+		color: #f0f6fc;
 	}
 
 	#actions #run {
-		background: $success 28%;
-		color: $success;
+		background: #238636;
+		color: #ffffff;
 		text-style: bold;
 	}
 
 	#actions #run:hover {
-		background: $success 45%;
+		background: #2ea043;
 	}
 
 	#actions #stop {
-		background: $error 28%;
-		color: $error;
+		background: #da3633;
+		color: #ffffff;
 		text-style: bold;
 	}
 
 	#actions #stop:hover {
-		background: $error 45%;
+		background: #f85149;
 	}
 
 	#actions Button:disabled {
-		opacity: 35%;
+		opacity: 25%;
 	}
 
 	/* Progress rows and step checklist */
 	#progress-summary {
 		height: 1;
 		padding: 0;
-		color: $text-muted;
+		color: #8b949e;
 	}
 
 	#progress {
@@ -456,24 +503,24 @@ class RewardsFarmerApp(App):
 	.step {
 		height: 1;
 		padding: 0 1;
-		color: $text-muted;
+		color: #8b949e;
 	}
 
 	.step-running {
-		color: $accent;
+		color: #58a6ff;
 		text-style: bold;
 	}
 
 	.step-ok {
-		color: $success;
+		color: #3fb950;
 	}
 
 	.step-skip {
-		color: $text-muted;
+		color: #6e7681;
 	}
 
 	.step-fail {
-		color: $error;
+		color: #f85149;
 		text-style: bold;
 	}
 
@@ -489,12 +536,35 @@ class RewardsFarmerApp(App):
 		padding: 0;
 	}
 
+	TabbedContent Tabs {
+		height: 1;
+		margin-bottom: 0;
+		background: #161b22;
+	}
+
+	TabbedContent Tab {
+		height: 1;
+		padding: 0 2;
+		color: #8b949e;
+	}
+
+	TabbedContent Tab:hover {
+		color: #f0f6fc;
+	}
+
+	TabbedContent Tab.-active {
+		color: #58a6ff;
+		text-style: bold;
+		background: #21262d;
+		border-bottom: heavy #58a6ff;
+	}
+
 	#log-banner {
 		display: none;
 		height: 1;
 		padding: 0 1;
-		background: $warning 25%;
-		color: $warning;
+		background: #382400;
+		color: #e3b341;
 		text-style: bold;
 	}
 
@@ -511,25 +581,32 @@ class RewardsFarmerApp(App):
 
 	#log {
 		height: 1fr;
-		background: $surface-darken-1;
-		color: $text;
+		background: #0d1117;
+		color: #e6edf3;
+		padding: 0 1;
 	}
 
 	#history-count {
 		height: 1;
 		padding: 0 1;
-		color: $text-muted;
+		color: #8b949e;
 	}
 
 	#history {
 		height: 1fr;
 		margin: 0;
-		background: $surface-darken-1;
+		background: #0d1117;
 	}
 
 	#history ListItem {
 		height: 1;
 		padding: 0 1;
+		color: #c9d1d9;
+	}
+
+	#history ListItem:hover {
+		background: #161b22;
+		color: #58a6ff;
 	}
 
 	/* Bottom status bar */
@@ -537,37 +614,37 @@ class RewardsFarmerApp(App):
 		dock: bottom;
 		height: 1;
 		padding: 0 1;
-		background: $surface;
-		color: $text;
+		background: #161b22;
+		color: #c9d1d9;
 	}
 
 	#status.tone-success {
-		color: $success;
+		color: #3fb950;
 		text-style: bold;
 	}
 
 	#status.tone-warning {
-		color: $warning;
+		color: #d29922;
 		text-style: bold;
 	}
 
 	#status.tone-danger {
-		color: $error;
+		color: #f85149;
 		text-style: bold;
 	}
 
 	#status.tone-running {
-		color: $accent;
+		color: #58a6ff;
 		text-style: bold;
 	}
 
 	#status.tone-idle {
-		color: $text-muted;
+		color: #8b949e;
 	}
 
 	/* Responsive compact rules for short screens (<= 28 rows) */
 	Screen.compact-height #sidebar-pane {
-		width: 36;
+		width: 40;
 		padding: 0;
 	}
 
@@ -583,9 +660,9 @@ class RewardsFarmerApp(App):
 		padding: 0;
 	}
 
-	/* Responsive compact rules for narrow screens (< 90 cols) */
+	/* Responsive compact rules for narrow screens (< 95 cols) */
 	Screen.compact-width #sidebar-pane {
-		width: 36;
+		width: 38;
 	}
 	"""
 
@@ -616,11 +693,30 @@ class RewardsFarmerApp(App):
 		self._quit_after_stop = False
 		self._schedule_line = daily_schedule.status_line(None)
 
+	@staticmethod
+	def _clean_profile_label(raw: str) -> str:
+		if " — " not in raw:
+			return raw
+		dir_name, details = raw.split(" — ", 1)
+		dir_name = dir_name.strip()
+		parts = [p.strip() for p in details.split(" · ") if p.strip()]
+		if not parts:
+			return dir_name
+		name_part = parts[0]
+		for p in parts:
+			if "@" not in p and p.lower() != dir_name.lower():
+				name_part = p
+				break
+		cleaned = f"{dir_name} ({name_part})"
+		if len(cleaned) > 34:
+			cleaned = cleaned[:33] + "…"
+		return cleaned
+
 	def _build_profile_options(self) -> tuple[list[tuple[str, str]], str]:
 		profiles = self.controller.get_available_profiles()
 		if not profiles:
 			profiles = [("Default", "Default profile")]
-		profile_options = [(label, name) for name, label in profiles]
+		profile_options = [(self._clean_profile_label(label), name) for name, label in profiles]
 		if len(profiles) > 1:
 			profile_options = [("All Profiles", "all")] + profile_options
 		if self.controller.selected_profile:
@@ -633,8 +729,9 @@ class RewardsFarmerApp(App):
 
 	def compose(self) -> ComposeResult:
 		yield Header()
-		yield Static("", id="setup")
-		yield Static("", id="schedule")
+		with Horizontal(id="top-bar"):
+			yield Static("", id="setup")
+			yield Static("", id="schedule")
 
 		profile_options, initial_profile = self._build_profile_options()
 
@@ -668,15 +765,24 @@ class RewardsFarmerApp(App):
 					yield Static("⏳ Delay: idle", id="timer-search-delay")
 					yield Static("⏰ Daily: idle", id="timer-schedule-window")
 
-				with Horizontal(id="actions"):
-					yield Button("Run", id="run", variant="success")
-					yield Button("Stop", id="stop", variant="error", disabled=True)
-					yield Button("Daily", id="daily")
-					yield Button("Config", id="config")
-					yield Button("Logs", id="open-logs")
-					yield Button("Profile", id="open-profile")
-					yield Button("Clear", id="clear-log")
-					yield Button("Quit", id="btn-quit")
+				btn_run = "▶ Run" if _is_unicode_supported() else "Run"
+				btn_stop = "⏹ Stop" if _is_unicode_supported() else "Stop"
+				btn_daily = "⏰ Daily" if _is_unicode_supported() else "Daily"
+				btn_config = "⚙ Config" if _is_unicode_supported() else "Config"
+				btn_logs = "📁 Logs" if _is_unicode_supported() else "Logs"
+				btn_profile = "👤 Profile" if _is_unicode_supported() else "Profile"
+				btn_clear = "🧹 Clear" if _is_unicode_supported() else "Clear"
+				btn_quit = "✕ Quit" if _is_unicode_supported() else "Quit"
+
+				with Grid(id="actions"):
+					yield Button(btn_run, id="run", variant="success")
+					yield Button(btn_stop, id="stop", variant="error", disabled=True)
+					yield Button(btn_daily, id="daily")
+					yield Button(btn_config, id="config")
+					yield Button(btn_logs, id="open-logs")
+					yield Button(btn_profile, id="open-profile")
+					yield Button(btn_clear, id="clear-log")
+					yield Button(btn_quit, id="btn-quit")
 
 			with Vertical(id="content-pane"):
 				prog = Container(id="panel-progress")
@@ -841,12 +947,14 @@ class RewardsFarmerApp(App):
 			has_tasks = any(snapshot.enabled_tasks.values()) if snapshot.enabled_tasks else bool(self.controller.enabled_tasks)
 			run = self.query_one("#run", Button)
 			run.disabled = (not snapshot.run_enabled) or (not has_tasks)
-			run.label = snapshot.run_button_text
+			run_icon = "▶ " if _is_unicode_supported() else ""
+			run.label = f"{run_icon}{snapshot.run_button_text}"
 			self.query_one("#stop", Button).disabled = not snapshot.stop_enabled
 
 			# Dynamic Daily button label
 			is_armed = daily_schedule.load_plan() is not None
-			self.query_one("#daily", Button).label = "Undaily" if is_armed else "Daily"
+			sched_icon = "⏰ " if _is_unicode_supported() else ""
+			self.query_one("#daily", Button).label = f"{sched_icon}Undaily" if is_armed else f"{sched_icon}Daily"
 
 			# Live Dashboard widgets
 			self._paint_dashboard(snapshot)
@@ -1059,7 +1167,8 @@ class RewardsFarmerApp(App):
 		self._schedule_line = result.status_line
 		self.query_one("#schedule", Static).update(result.status_line)
 		try:
-			self.query_one("#daily", Button).label = "Undaily"
+			sched_icon = "⏰ " if _is_unicode_supported() else ""
+			self.query_one("#daily", Button).label = f"{sched_icon}Undaily"
 		except NoMatches:
 			pass
 		self.notify("Daily trigger armed.", timeout=4)
@@ -1073,7 +1182,8 @@ class RewardsFarmerApp(App):
 		self._schedule_line = daily_schedule.status_line(None)
 		self.query_one("#schedule", Static).update(self._schedule_line)
 		try:
-			self.query_one("#daily", Button).label = "Daily"
+			sched_icon = "⏰ " if _is_unicode_supported() else ""
+			self.query_one("#daily", Button).label = f"{sched_icon}Daily"
 		except NoMatches:
 			pass
 		self.notify(message, timeout=4)
