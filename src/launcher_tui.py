@@ -19,6 +19,7 @@ import dotenv
 import launcher_controller as controller
 import launcher_runtime as runtime
 from constants import DOTENV_PATH
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Grid, Horizontal, Vertical, VerticalScroll
@@ -770,27 +771,71 @@ class RewardsFarmerApp(App):
 		color: #8b949e;
 	}
 
-	/* Responsive compact rules for short screens (<= 28 rows) */
-	Screen.compact-height #sidebar-pane {
-		width: 40;
+	/* Responsive Adaptability */
+	/* Narrow screens (< 90 columns, e.g. standard 80-col terminals) */
+	Screen.compact-width #sidebar-pane {
+		width: 32;
+		padding: 0;
+		margin-right: 1;
+	}
+
+	Screen.compact-width #actions {
+		grid-size: 2;
+		grid-columns: 1fr 1fr;
+	}
+
+	Screen.compact-width #actions Button {
+		column-span: 1;
 		padding: 0;
 	}
 
-	Screen.compact-height #content-pane {
-		padding: 0;
+	Screen.compact-width #actions #run,
+	Screen.compact-width #actions #stop,
+	Screen.compact-width #actions #open-profile,
+	Screen.compact-width #actions #btn-quit {
+		column-span: 1;
 	}
 
+	/* Ultra-narrow screens (< 75 columns) */
+	Screen.ultra-compact-width #sidebar-pane {
+		width: 28;
+	}
+
+	Screen.ultra-compact-width #task-toggles-grid {
+		grid-size: 1;
+		grid-columns: 1fr;
+	}
+
+	/* Short screens (<= 26 rows, e.g. standard 24-row terminals) */
 	Screen.compact-height #panel-progress {
 		max-height: 6;
+		margin-bottom: 0;
 	}
 
-	Screen.compact-height #actions Button {
-		padding: 0;
+	Screen.compact-height .task-header {
+		margin-top: 0;
 	}
 
-	/* Responsive compact rules for narrow screens (< 95 cols) */
-	Screen.compact-width #sidebar-pane {
-		width: 38;
+	Screen.compact-height #actions {
+		margin-bottom: 0;
+	}
+
+	Screen.compact-height #task-toggles-grid {
+		margin-bottom: 0;
+	}
+
+	Screen.compact-height #panel-dashboard {
+		margin-top: 0;
+		padding-top: 0;
+	}
+
+	/* Ultra-short screens (< 20 rows) */
+	Screen.ultra-compact-height #top-bar {
+		display: none;
+	}
+
+	Screen.ultra-compact-height #panel-progress {
+		max-height: 4;
 	}
 	"""
 
@@ -836,8 +881,8 @@ class RewardsFarmerApp(App):
 				name_part = p
 				break
 		cleaned = f"{dir_name} ({name_part})"
-		if len(cleaned) > 34:
-			cleaned = cleaned[:33] + "…"
+		if len(cleaned) > 28:
+			cleaned = cleaned[:27] + "…"
 		return cleaned
 
 	def _build_profile_options(self) -> tuple[list[tuple[str, str]], str]:
@@ -916,7 +961,7 @@ class RewardsFarmerApp(App):
 				prog = Container(id="panel-progress")
 				prog.border_title = " Step Progress "
 				with prog:
-					yield Static("Run progress", id="progress-summary")
+					yield Static("0 of 0 complete", id="progress-summary")
 					yield Vertical(id="progress")
 
 				tabs = TabbedContent(id="panel-tabs")
@@ -927,18 +972,20 @@ class RewardsFarmerApp(App):
 						with VerticalScroll(id="log-panel"):
 							yield RichLog(id="log", markup=False, wrap=True, highlight=False)
 					with TabPane("Past Runs", id="tab-history"):
-						yield Static("Past runs", id="history-count")
+						yield Static("0 recorded runs", id="history-count")
 						yield ListView(id="history")
 
 		yield Static("Ready to run", id="status")
 		yield Footer()
 
-	def on_mount(self) -> None:
-		if self.size.height <= 28:
-			self.screen.add_class("compact-height")
-		if self.size.width < 90:
-			self.screen.add_class("compact-width")
+	def _update_responsive_classes(self, width: int, height: int) -> None:
+		self.screen.set_class(width < 90, "compact-width")
+		self.screen.set_class(width < 75, "ultra-compact-width")
+		self.screen.set_class(height <= 26, "compact-height")
+		self.screen.set_class(height < 20, "ultra-compact-height")
 
+	def on_mount(self) -> None:
+		self._update_responsive_classes(self.size.width, self.size.height)
 		self._log_visible = True
 		self.query_one("#log-panel").display = True
 		for line, tag in self.controller.initial_log_lines():
@@ -978,9 +1025,8 @@ class RewardsFarmerApp(App):
 		self.set_interval(0.25, self._poll)
 		self.set_interval(30, self._maybe_daily)
 
-	def on_resize(self, event) -> None:
-		self.screen.set_class(event.size.height <= 28, "compact-height")
-		self.screen.set_class(event.size.width < 90, "compact-width")
+	def on_resize(self, event: events.Resize) -> None:
+		self._update_responsive_classes(event.size.width, event.size.height)
 
 	def on_select_changed(self, event: Select.Changed) -> None:
 		if event.select.id == "profile-select":
@@ -1068,7 +1114,7 @@ class RewardsFarmerApp(App):
 			summary = snapshot.progress_summary
 			if snapshot.running:
 				summary = f"{summary}  ·  {snapshot.status_text}"
-			self.query_one("#progress-summary", Static).update(f"Run progress  {summary}")
+			self.query_one("#progress-summary", Static).update(summary)
 			status = self.query_one("#status", Static)
 			status.update(f"{snapshot.status_text}   {snapshot.run_count_label}")
 			status.set_classes(f"tone-{snapshot.status_tone}")
@@ -1196,7 +1242,7 @@ class RewardsFarmerApp(App):
 
 	def _paint_history(self, entries: list[dict]) -> None:
 		count = self.query_one("#history-count", Static)
-		count.update(f"Past runs  {len(entries)}")
+		count.update(f"{len(entries)} recorded run{'s' if len(entries) != 1 else ''}")
 		key = "|".join(
 			f"{entry.get('number')}:{entry.get('finished')}:{entry.get('summary')}"
 			for entry in entries
