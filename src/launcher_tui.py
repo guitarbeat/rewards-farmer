@@ -7,6 +7,13 @@ import os
 import sys
 from datetime import datetime
 
+if hasattr(sys.stdout, "reconfigure"):
+	try:
+		sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+		sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+	except Exception:
+		pass
+
 import daily_schedule
 import dotenv
 import launcher_controller as controller
@@ -274,10 +281,11 @@ TASK_TOGGLE_MAP: dict[str, str] = {
 
 
 def _is_unicode_supported() -> bool:
-	if os.environ.get("WT_SESSION") or os.environ.get("TERM_PROGRAM"):
-		return True
-	encoding = (getattr(sys.stdout, "encoding", None) or "").lower().replace("-", "")
-	return encoding in {"utf8", "utf16", "cp65001"}
+	if os.environ.get("REWARDS_FORCE_ASCII", "").strip().lower() in ("1", "true", "yes"):
+		return False
+	if os.environ.get("TERM") == "dumb":
+		return False
+	return True
 
 
 def _icons() -> dict[str, str]:
@@ -381,7 +389,7 @@ class RewardsFarmerApp(App):
 		border-title-color: #8b949e;
 		background: #161b22;
 		height: auto;
-		margin-bottom: 0;
+		margin-bottom: 1;
 		padding: 0 1;
 	}
 
@@ -391,7 +399,7 @@ class RewardsFarmerApp(App):
 	}
 
 	#panel-progress {
-		max-height: 9;
+		max-height: 10;
 		border-title-color: #bc8cff;
 	}
 
@@ -409,13 +417,21 @@ class RewardsFarmerApp(App):
 		color: #f0f6fc;
 	}
 
+	.task-header {
+		color: #8b949e;
+		text-style: bold;
+		margin-top: 1;
+		margin-bottom: 0;
+		padding: 0;
+	}
+
 	/* Task toggle grid */
 	#task-toggles-grid {
 		layout: grid;
 		grid-size: 2;
 		grid-columns: 1fr 1fr;
 		height: auto;
-		margin: 0;
+		margin: 0 0 1 0;
 		padding: 0;
 	}
 
@@ -481,33 +497,38 @@ class RewardsFarmerApp(App):
 	/* Action buttons */
 	#actions {
 		layout: grid;
-		grid-size: 2 4;
+		grid-size: 2;
 		grid-columns: 1fr 1fr;
-		height: 4;
-		margin-top: 1;
+		grid-gutter: 0 1;
+		height: auto;
+		margin: 0 0 1 0;
 		padding: 0;
 	}
 
 	#actions Button {
-		height: 1;
+		height: 2;
 		margin: 0;
 		padding: 0 1;
-		border: none;
 		min-width: 6;
 		background: #21262d;
 		color: #c9d1d9;
-		text-align: center;
+		border: round #30363d;
+		content-align: center middle;
 	}
 
 	#actions Button:hover {
 		background: #30363d;
 		color: #f0f6fc;
+		border: round #58a6ff;
 	}
 
 	#actions #run {
+		column-span: 2;
+		height: 2;
 		background: #238636;
 		color: #ffffff;
 		text-style: bold;
+		border: none;
 	}
 
 	#actions #run:hover {
@@ -515,17 +536,35 @@ class RewardsFarmerApp(App):
 	}
 
 	#actions #stop {
-		background: #da3633;
-		color: #ffffff;
+		background: #21262d;
+		color: #f85149;
+		border: round #30363d;
 		text-style: bold;
 	}
 
 	#actions #stop:hover {
-		background: #f85149;
+		background: #da3633;
+		color: #ffffff;
+		border: round #f85149;
+	}
+
+	#actions #btn-quit {
+		column-span: 2;
+		height: 2;
+		background: #161b22;
+		color: #8b949e;
+		border: round #30363d;
+	}
+
+	#actions #btn-quit:hover {
+		background: #21262d;
+		color: #f85149;
+		border: round #f85149;
 	}
 
 	#actions Button:disabled {
 		opacity: 25%;
+		border: round #21262d;
 	}
 
 	/* Progress rows and step checklist */
@@ -567,8 +606,17 @@ class RewardsFarmerApp(App):
 	/* Tabbed content */
 	#panel-tabs {
 		height: 1fr;
+		border: round #30363d;
+		border-title-align: left;
+		border-title-style: bold;
+		border-title-color: #58a6ff;
+		background: #161b22;
 		margin: 0;
 		padding: 0;
+	}
+
+	#panel-tabs:focus-within {
+		border: round #58a6ff;
 	}
 
 	#tab-log, #tab-history {
@@ -781,10 +829,19 @@ class RewardsFarmerApp(App):
 
 		profile_options, initial_profile = self._build_profile_options()
 
+		btn_run = "▶ START FARMING" if _is_unicode_supported() else "Run"
+		btn_stop = "⏹ Stop" if _is_unicode_supported() else "Stop"
+		btn_daily = "⏰ Daily" if _is_unicode_supported() else "Daily"
+		btn_config = "⚙ Config" if _is_unicode_supported() else "Config"
+		btn_logs = "📁 Logs" if _is_unicode_supported() else "Logs"
+		btn_profile = "👤 Profile" if _is_unicode_supported() else "Profile"
+		btn_clear = "🧹 Clear" if _is_unicode_supported() else "Clear"
+		btn_quit = "✕ Quit" if _is_unicode_supported() else "Quit"
+
 		with Horizontal(id="main-view"):
-			with Vertical(id="sidebar-pane"):
+			with VerticalScroll(id="sidebar-pane"):
 				cfg = Container(id="panel-config")
-				cfg.border_title = " Profile & Tasks "
+				cfg.border_title = " Controls & Tasks "
 				with cfg:
 					yield Select[str](
 						profile_options,
@@ -793,6 +850,17 @@ class RewardsFarmerApp(App):
 						compact=True,
 						allow_blank=False,
 					)
+					with Grid(id="actions"):
+						yield Button(btn_run, id="run", variant="success")
+						yield Button(btn_stop, id="stop", variant="error", disabled=True)
+						yield Button(btn_daily, id="daily")
+						yield Button(btn_config, id="config")
+						yield Button(btn_logs, id="open-logs")
+						yield Button(btn_profile, id="open-profile")
+						yield Button(btn_clear, id="clear-log")
+						yield Button(btn_quit, id="btn-quit")
+
+					yield Static("Automated Tasks", classes="task-header")
 					with Grid(id="task-toggles-grid"):
 						yield Checkbox("Daily Set", value=True, id="task-daily-set", compact=True)
 						yield Checkbox("Explore", value=True, id="task-explore", compact=True)
@@ -811,25 +879,6 @@ class RewardsFarmerApp(App):
 					yield Static("⏳ Delay: idle", id="timer-search-delay")
 					yield Static("⏰ Daily: idle", id="timer-schedule-window")
 
-				btn_run = "▶ Run" if _is_unicode_supported() else "Run"
-				btn_stop = "⏹ Stop" if _is_unicode_supported() else "Stop"
-				btn_daily = "⏰ Daily" if _is_unicode_supported() else "Daily"
-				btn_config = "⚙ Config" if _is_unicode_supported() else "Config"
-				btn_logs = "📁 Logs" if _is_unicode_supported() else "Logs"
-				btn_profile = "👤 Profile" if _is_unicode_supported() else "Profile"
-				btn_clear = "🧹 Clear" if _is_unicode_supported() else "Clear"
-				btn_quit = "✕ Quit" if _is_unicode_supported() else "Quit"
-
-				with Grid(id="actions"):
-					yield Button(btn_run, id="run", variant="success")
-					yield Button(btn_stop, id="stop", variant="error", disabled=True)
-					yield Button(btn_daily, id="daily")
-					yield Button(btn_config, id="config")
-					yield Button(btn_logs, id="open-logs")
-					yield Button(btn_profile, id="open-profile")
-					yield Button(btn_clear, id="clear-log")
-					yield Button(btn_quit, id="btn-quit")
-
 			with Vertical(id="content-pane"):
 				prog = Container(id="panel-progress")
 				prog.border_title = " Step Progress "
@@ -837,7 +886,9 @@ class RewardsFarmerApp(App):
 					yield Static("Run progress", id="progress-summary")
 					yield Vertical(id="progress")
 
-				with TabbedContent(id="panel-tabs"):
+				tabs = TabbedContent(id="panel-tabs")
+				tabs.border_title = " Activity Console "
+				with tabs:
 					with TabPane("Console Log", id="tab-log"):
 						yield Static("", id="log-banner")
 						with VerticalScroll(id="log-panel"):
@@ -994,7 +1045,12 @@ class RewardsFarmerApp(App):
 			run = self.query_one("#run", Button)
 			run.disabled = (not snapshot.run_enabled) or (not has_tasks)
 			run_icon = "▶ " if _is_unicode_supported() else ""
-			run.label = f"{run_icon}{snapshot.run_button_text}"
+			if snapshot.running:
+				run.label = f"{run_icon}RUNNING…"
+			elif snapshot.run_button_text == "Run again":
+				run.label = f"{run_icon}RUN AGAIN"
+			else:
+				run.label = f"{run_icon}START FARMING"
 			self.query_one("#stop", Button).disabled = not snapshot.stop_enabled
 
 			# Dynamic Daily button label
