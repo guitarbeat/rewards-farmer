@@ -370,7 +370,7 @@ class RewardsFarmerApp(App):
 	}
 
 	#sidebar-pane {
-		width: 44;
+		width: 38;
 		height: 1fr;
 		padding: 0 1 0 0;
 	}
@@ -497,8 +497,8 @@ class RewardsFarmerApp(App):
 	/* Action buttons */
 	#actions {
 		layout: grid;
-		grid-size: 2;
-		grid-columns: 1fr 1fr;
+		grid-size: 4;
+		grid-columns: 1fr 1fr 1fr 1fr;
 		grid-gutter: 0 1;
 		height: auto;
 		margin: 0 0 1 0;
@@ -506,29 +506,26 @@ class RewardsFarmerApp(App):
 	}
 
 	#actions Button {
-		height: 2;
+		height: 1;
 		margin: 0;
 		padding: 0 1;
-		min-width: 6;
+		min-width: 4;
 		background: #21262d;
 		color: #c9d1d9;
-		border: round #30363d;
-		content-align: center middle;
+		border: none;
+		text-align: center;
 	}
 
 	#actions Button:hover {
 		background: #30363d;
-		color: #f0f6fc;
-		border: round #58a6ff;
+		color: #58a6ff;
 	}
 
 	#actions #run {
 		column-span: 2;
-		height: 2;
 		background: #238636;
 		color: #ffffff;
 		text-style: bold;
-		border: none;
 	}
 
 	#actions #run:hover {
@@ -536,35 +533,34 @@ class RewardsFarmerApp(App):
 	}
 
 	#actions #stop {
+		column-span: 2;
 		background: #21262d;
 		color: #f85149;
-		border: round #30363d;
 		text-style: bold;
 	}
 
 	#actions #stop:hover {
 		background: #da3633;
 		color: #ffffff;
-		border: round #f85149;
+	}
+
+	#actions #open-profile {
+		column-span: 2;
 	}
 
 	#actions #btn-quit {
 		column-span: 2;
-		height: 2;
 		background: #161b22;
 		color: #8b949e;
-		border: round #30363d;
 	}
 
 	#actions #btn-quit:hover {
 		background: #21262d;
 		color: #f85149;
-		border: round #f85149;
 	}
 
 	#actions Button:disabled {
 		opacity: 25%;
-		border: round #21262d;
 	}
 
 	/* Progress rows and step checklist */
@@ -829,7 +825,7 @@ class RewardsFarmerApp(App):
 
 		profile_options, initial_profile = self._build_profile_options()
 
-		btn_run = "▶ START FARMING" if _is_unicode_supported() else "Run"
+		btn_run = "▶ Run" if _is_unicode_supported() else "Run"
 		btn_stop = "⏹ Stop" if _is_unicode_supported() else "Stop"
 		btn_daily = "⏰ Daily" if _is_unicode_supported() else "Daily"
 		btn_config = "⚙ Config" if _is_unicode_supported() else "Config"
@@ -856,8 +852,8 @@ class RewardsFarmerApp(App):
 						yield Button(btn_daily, id="daily")
 						yield Button(btn_config, id="config")
 						yield Button(btn_logs, id="open-logs")
-						yield Button(btn_profile, id="open-profile")
 						yield Button(btn_clear, id="clear-log")
+						yield Button(btn_profile, id="open-profile")
 						yield Button(btn_quit, id="btn-quit")
 
 					yield Static("Automated Tasks", classes="task-header")
@@ -1046,11 +1042,11 @@ class RewardsFarmerApp(App):
 			run.disabled = (not snapshot.run_enabled) or (not has_tasks)
 			run_icon = "▶ " if _is_unicode_supported() else ""
 			if snapshot.running:
-				run.label = f"{run_icon}RUNNING…"
+				run.label = f"{run_icon}Running…"
 			elif snapshot.run_button_text == "Run again":
-				run.label = f"{run_icon}RUN AGAIN"
+				run.label = f"{run_icon}Run again"
 			else:
-				run.label = f"{run_icon}START FARMING"
+				run.label = f"{run_icon}Run"
 			self.query_one("#stop", Button).disabled = not snapshot.stop_enabled
 
 			# Dynamic Daily button label
