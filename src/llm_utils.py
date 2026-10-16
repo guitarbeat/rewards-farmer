@@ -103,15 +103,48 @@ def get_llm_response(messages: list[dict[str, str]]) -> str:
 
 	return content
 
+def sanitize_search_query(raw_query: str) -> str:
+	"""Remove conversational labels, markdown artifacts, and quotes from LLM outputs."""
+	if not raw_query:
+		return ""
+	cleaned = raw_query.strip()
+	# Handle markdown bolded or italicized labels like **search query:** or **query:**
+	cleaned = re.sub(
+		r"^\*+\s*(?:search\s+query|query|search\s+for|bing\s+search|search)\s*:\s*\*+",
+		"",
+		cleaned,
+		flags=re.IGNORECASE,
+	).strip()
+	prefixes = [
+		"search query:",
+		"search query",
+		"query:",
+		"search for:",
+		"bing search:",
+		"search:",
+	]
+	for prefix in prefixes:
+		if cleaned.lower().startswith(prefix):
+			cleaned = cleaned[len(prefix):].strip(" :-\t")
+	# Strip markdown wrappers if the string was wrapped in **...** or *...*
+	cleaned = re.sub(r"^\*+|\*+$", "", cleaned).strip()
+	# Strip leading and trailing quotes or backticks if present
+	cleaned = re.sub(r'^["\'`]+|["\'`]+$', "", cleaned).strip()
+	return cleaned
+
+
 def get_nonempty_llm_response(messages: list[dict[str, str]]) -> str:
 	"""Retry a bounded number of times instead of spinning forever on empties."""
 	for attempt in range(MAX_EMPTY_RETRIES):
-		response = get_llm_response(messages)
-
-		if response and response.strip():
-			return response
-
-		logger.warning("Empty LLM response, retry %s/%s", attempt + 1, MAX_EMPTY_RETRIES)
+		try:
+			response = get_llm_response(messages)
+			if response and response.strip():
+				return response
+			logger.warning("Empty LLM response, retry %s/%s", attempt + 1, MAX_EMPTY_RETRIES)
+		except requests.exceptions.HTTPError as exc:
+			if exc.response is not None and exc.response.status_code == 401:
+				logger.error("LLM authentication failed (401 Unauthorized). Check your API key.")
+			raise
 
 	raise RuntimeError(f"LLM returned nothing usable after {MAX_EMPTY_RETRIES} attempts")
 
@@ -132,7 +165,7 @@ def get_search_query_from_task_description(task_description: str) -> str:
 
 	try:
 		response = get_nonempty_llm_response(messages)
-		return response.lower()
+		return sanitize_search_query(response).lower()
 	except Exception as exc:
 		logger.warning("LLM is offline or unavailable (%s). Using fallback search query generator.", exc)
 		words = [w for w in re.sub(r"[^\w\s]", "", task_description).split() if len(w) > 3 and w.lower() not in {"search", "bing", "find", "about", "with", "from", "that", "this"}]
@@ -158,11 +191,12 @@ def get_related_search_queries(seed_word: str, num_queries: int=20) -> Generator
 		if not use_fallback:
 			try:
 				response = get_nonempty_llm_response(messages)
-				yield response.lower()
+				clean_query = sanitize_search_query(response).lower()
+				yield clean_query
 
 				messages.append({
 					"role": "assistant",
-					"content": response
+					"content": clean_query
 				})
 
 				messages.append({

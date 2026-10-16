@@ -2,21 +2,27 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import sys
 from datetime import datetime
 
 import daily_schedule
+import dotenv
 import launcher_controller as controller
 import launcher_runtime as runtime
+from constants import DOTENV_PATH
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Grid, Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
+from textual.screen import ModalScreen
 from textual.widgets import (
 	Button,
 	Checkbox,
 	Footer,
 	Header,
+	Input,
 	Label,
 	ListItem,
 	ListView,
@@ -27,6 +33,179 @@ from textual.widgets import (
 	TabbedContent,
 	TabPane,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def save_env_settings(settings: dict[str, str], dotenv_path: str = DOTENV_PATH) -> None:
+	"""Persist key-value settings to .env and update os.environ."""
+	if not os.path.exists(dotenv_path):
+		try:
+			with open(dotenv_path, "w", encoding="utf-8") as f:
+				f.write("# Rewards Farmer Configuration\n")
+		except Exception as exc:
+			logger.warning("Could not create .env file at %s: %s", dotenv_path, exc)
+
+	for key, value in settings.items():
+		os.environ[key] = str(value)
+		try:
+			dotenv.set_key(dotenv_path, key, str(value))
+		except Exception as exc:
+			logger.warning("Could not set %s in .env: %s", key, exc)
+
+
+class SettingsModal(ModalScreen[bool]):
+	"""Modal dialog for viewing and updating runtime configuration."""
+
+	DEFAULT_CSS = """
+	SettingsModal {
+		align: center middle;
+		background: rgba(0, 0, 0, 0.7);
+	}
+
+	#settings-dialog {
+		width: 68;
+		height: auto;
+		max-height: 90%;
+		border: round $primary;
+		background: $surface;
+		padding: 1 2;
+	}
+
+	#settings-title {
+		text-align: center;
+		text-style: bold;
+		color: $primary;
+		margin-bottom: 1;
+	}
+
+	.settings-label {
+		color: $text;
+		text-style: bold;
+		margin-top: 1;
+		margin-bottom: 0;
+	}
+
+	.settings-desc {
+		color: $text-muted;
+		margin-bottom: 0;
+	}
+
+	#settings-dialog Input {
+		margin-top: 0;
+		margin-bottom: 0;
+	}
+
+	#settings-dialog Select {
+		margin-top: 0;
+		margin-bottom: 0;
+	}
+
+	#settings-dialog Checkbox {
+		margin-top: 0;
+		margin-bottom: 0;
+	}
+
+	#settings-buttons {
+		margin-top: 1;
+		align: right middle;
+		height: 3;
+	}
+
+	#settings-buttons Button {
+		margin-left: 1;
+	}
+	"""
+
+	BINDINGS = [
+		Binding("escape", "cancel", "Cancel"),
+	]
+
+	def compose(self) -> ComposeResult:
+		with Vertical(id="settings-dialog"):
+			yield Static("⚙️ Configuration & Features", id="settings-title")
+
+			with VerticalScroll(id="settings-scroll"):
+				yield Label("Discord / Generic Webhook URL", classes="settings-label")
+				yield Static("Receive notifications on run completion or failure", classes="settings-desc")
+				yield Input(
+					value=os.environ.get("WEBHOOK_URL", ""),
+					placeholder="https://discord.com/api/webhooks/...",
+					id="cfg-webhook-url",
+				)
+
+				yield Label("Webhook Failure Only", classes="settings-label")
+				yield Checkbox(
+					"Only notify when a task or run fails",
+					value=os.environ.get("WEBHOOK_NOTIFY_ON_FAILURE_ONLY", "").strip().lower() in ("1", "true", "yes"),
+					id="cfg-webhook-failure-only",
+				)
+
+				yield Label("Mobile Search Emulation", classes="settings-label")
+				yield Checkbox(
+					"Run mobile searches under iPhone UA/CDP emulation",
+					value=os.environ.get("ENABLE_MOBILE_SEARCH", "").strip().lower() in ("1", "true", "yes"),
+					id="cfg-enable-mobile-search",
+				)
+
+				yield Label("Search Burst Limit", classes="settings-label")
+				yield Static("Searches per burst (0 = full batch, 4 = 15m cooldown)", classes="settings-desc")
+				yield Input(
+					value=os.environ.get("SEARCH_BURST_LIMIT", "0"),
+					placeholder="0",
+					id="cfg-burst-limit",
+				)
+
+				yield Label("Search Cooldown Delay (seconds)", classes="settings-label")
+				yield Static("Delay between bursts (e.g. 900 for 15 min, 0 to skip)", classes="settings-desc")
+				yield Input(
+					value=os.environ.get("SEARCH_COOLDOWN_DELAY_SECONDS", "0"),
+					placeholder="0",
+					id="cfg-cooldown-delay",
+				)
+
+				yield Label("Query Source Backend", classes="settings-label")
+				current_qs = os.environ.get("QUERY_SOURCE", "llm").strip().lower()
+				yield Select[str](
+					[("Ollama / Local LLM (llm)", "llm"), ("Public Bing Trends (trends)", "trends")],
+					value=current_qs if current_qs in ("llm", "trends") else "llm",
+					id="cfg-query-source",
+					allow_blank=False,
+				)
+
+			with Horizontal(id="settings-buttons"):
+				yield Button("Cancel", variant="default", id="btn-cancel")
+				yield Button("Save", variant="primary", id="btn-save")
+
+	def action_cancel(self) -> None:
+		self.dismiss(False)
+
+	def on_button_pressed(self, event: Button.Pressed) -> None:
+		if event.button.id == "btn-cancel":
+			self.dismiss(False)
+		elif event.button.id == "btn-save":
+			self._save_settings()
+
+	def _save_settings(self) -> None:
+		webhook_url = self.query_one("#cfg-webhook-url", Input).value.strip()
+		webhook_fail_only = "true" if self.query_one("#cfg-webhook-failure-only", Checkbox).value else "false"
+		enable_mobile = "true" if self.query_one("#cfg-enable-mobile-search", Checkbox).value else "false"
+		burst_limit = self.query_one("#cfg-burst-limit", Input).value.strip() or "0"
+		cooldown_delay = self.query_one("#cfg-cooldown-delay", Input).value.strip() or "0"
+		query_source = str(self.query_one("#cfg-query-source", Select).value or "llm")
+
+		settings = {
+			"WEBHOOK_URL": webhook_url,
+			"WEBHOOK_NOTIFY_ON_FAILURE_ONLY": webhook_fail_only,
+			"ENABLE_MOBILE_SEARCH": enable_mobile,
+			"SEARCH_BURST_LIMIT": burst_limit,
+			"SEARCH_COOLDOWN_DELAY_SECONDS": cooldown_delay,
+			"QUERY_SOURCE": query_source,
+		}
+
+		save_env_settings(settings)
+		self.dismiss(True)
+
 
 _UNICODE_ICONS = {
 	"pending": "○",
@@ -217,8 +396,8 @@ class RewardsFarmerApp(App):
 	/* Action buttons */
 	#actions {
 		layout: grid;
-		grid-size: 3 2;
-		grid-columns: 1fr 1fr 1fr;
+		grid-size: 4 2;
+		grid-columns: 1fr 1fr 1fr 1fr;
 		height: 2;
 		margin: 0;
 		padding: 0;
@@ -416,6 +595,7 @@ class RewardsFarmerApp(App):
 		Binding("escape", "stop", "Stop"),
 		Binding("l", "toggle_log", "Log"),
 		Binding("d", "arm_daily", "Daily"),
+		Binding("s", "open_settings", "Config"),
 		Binding("ctrl+d", "remove_daily", "Undaily", show=False),
 		Binding("ctrl+c", "quit_app", "Quit", show=False),
 		Binding("q", "quit_app", "Quit"),
@@ -492,9 +672,11 @@ class RewardsFarmerApp(App):
 					yield Button("Run", id="run", variant="success")
 					yield Button("Stop", id="stop", variant="error", disabled=True)
 					yield Button("Daily", id="daily")
+					yield Button("Config", id="config")
 					yield Button("Logs", id="open-logs")
 					yield Button("Profile", id="open-profile")
 					yield Button("Clear", id="clear-log")
+					yield Button("Quit", id="btn-quit")
 
 			with Vertical(id="content-pane"):
 				prog = Container(id="panel-progress")
@@ -945,6 +1127,17 @@ class RewardsFarmerApp(App):
 				self.action_remove_daily()
 			else:
 				self.action_arm_daily()
+		elif button_id == "config":
+			self.action_open_settings()
+		elif button_id == "btn-quit":
+			self.action_quit_app()
+
+	def action_open_settings(self) -> None:
+		self.push_screen(SettingsModal(), self._on_settings_closed)
+
+	def _on_settings_closed(self, saved: bool | None) -> None:
+		if saved:
+			self.notify("Settings saved to .env", timeout=3)
 
 	def on_list_view_selected(self, event: ListView.Selected) -> None:
 		name = event.item.name or ""

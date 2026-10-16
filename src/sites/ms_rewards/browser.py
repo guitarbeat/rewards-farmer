@@ -120,6 +120,16 @@ class BrowserHelpers:
 				else:
 					target_elem = elem_or_getter
 
+				if hasattr(self.driver, "execute_script"):
+					try:
+						self.driver.execute_script(
+							"arguments[0].scrollIntoView({block: 'center', inline: 'nearest'});",
+							target_elem,
+						)
+						time.sleep(0.1)
+					except Exception:
+						pass
+
 				self.mouse.move_to_element(target_elem)
 				self.mouse.human_like_click()
 				return
