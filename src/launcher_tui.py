@@ -371,7 +371,7 @@ class RewardsFarmerApp(App):
 	}
 
 	#sidebar-pane {
-		width: 38;
+		width: 36;
 		height: 1fr;
 		background: #161b22;
 		border: round #30363d;
@@ -380,6 +380,9 @@ class RewardsFarmerApp(App):
 		border-title-color: #58a6ff;
 		padding: 0 1;
 		margin-right: 1;
+		scrollbar-size-vertical: 1;
+		scrollbar-color: #30363d #161b22;
+		overflow-y: auto;
 	}
 
 	#sidebar-pane:focus-within {
@@ -430,7 +433,7 @@ class RewardsFarmerApp(App):
 	/* Profile selection */
 	#profile-select {
 		height: auto;
-		margin: 0 0 1 0;
+		margin: 0;
 		padding: 0;
 		border: none;
 		background: #21262d;
@@ -451,7 +454,7 @@ class RewardsFarmerApp(App):
 		grid-size: 2;
 		grid-columns: 1fr 1fr;
 		height: auto;
-		margin: 0 0 1 0;
+		margin: 0;
 		padding: 0;
 	}
 
@@ -475,9 +478,29 @@ class RewardsFarmerApp(App):
 	}
 
 	/* Telemetry & metrics styling */
-	#stat-points, #active-step-label, #timer-search-delay, #timer-schedule-window {
+	#stat-points, #active-step-label {
 		height: 1;
 		padding: 0;
+	}
+
+	#timers-row {
+		height: 1;
+		width: 100%;
+		margin: 0;
+		padding: 0;
+	}
+
+	#timer-search-delay {
+		width: 1fr;
+		height: 1;
+		padding: 0;
+	}
+
+	#timer-schedule-window {
+		width: 1fr;
+		height: 1;
+		padding: 0;
+		text-align: right;
 	}
 
 	.points-positive {
@@ -517,11 +540,11 @@ class RewardsFarmerApp(App):
 	/* Action buttons */
 	#actions {
 		layout: grid;
-		grid-size: 4;
-		grid-columns: 1fr 1fr 1fr 1fr;
+		grid-size: 2;
+		grid-columns: 1fr 1fr;
 		grid-gutter: 0 1;
 		height: auto;
-		margin: 0 0 1 0;
+		margin: 1 0 0 0;
 		padding: 0;
 	}
 
@@ -542,7 +565,6 @@ class RewardsFarmerApp(App):
 	}
 
 	#actions #run {
-		column-span: 2;
 		background: #238636;
 		color: #ffffff;
 		text-style: bold;
@@ -553,7 +575,6 @@ class RewardsFarmerApp(App):
 	}
 
 	#actions #stop {
-		column-span: 2;
 		background: #21262d;
 		color: #f85149;
 		text-style: bold;
@@ -564,12 +585,7 @@ class RewardsFarmerApp(App):
 		color: #ffffff;
 	}
 
-	#actions #open-profile {
-		column-span: 2;
-	}
-
 	#actions #btn-quit {
-		column-span: 2;
 		background: #161b22;
 		color: #8b949e;
 	}
@@ -580,7 +596,9 @@ class RewardsFarmerApp(App):
 	}
 
 	#actions Button:disabled {
-		opacity: 25%;
+		background: #161b22;
+		color: #6e7681;
+		opacity: 100%;
 	}
 
 	/* Progress rows and step checklist */
@@ -785,15 +803,7 @@ class RewardsFarmerApp(App):
 	}
 
 	Screen.compact-width #actions Button {
-		column-span: 1;
 		padding: 0;
-	}
-
-	Screen.compact-width #actions #run,
-	Screen.compact-width #actions #stop,
-	Screen.compact-width #actions #open-profile,
-	Screen.compact-width #actions #btn-quit {
-		column-span: 1;
 	}
 
 	/* Ultra-narrow screens (< 75 columns) */
@@ -908,14 +918,15 @@ class RewardsFarmerApp(App):
 
 		profile_options, initial_profile = self._build_profile_options()
 
+		glyphs = _dash_glyphs()
 		btn_run = "▶ Run" if _is_unicode_supported() else "Run"
-		btn_stop = "⏹ Stop" if _is_unicode_supported() else "Stop"
-		btn_daily = "⏰ Daily" if _is_unicode_supported() else "Daily"
-		btn_config = "⚙ Config" if _is_unicode_supported() else "Config"
-		btn_logs = "📁 Logs" if _is_unicode_supported() else "Logs"
-		btn_profile = "👤 Profile" if _is_unicode_supported() else "Profile"
-		btn_clear = "🧹 Clear" if _is_unicode_supported() else "Clear"
-		btn_quit = "✕ Quit" if _is_unicode_supported() else "Quit"
+		btn_stop = "Stop"
+		btn_daily = "Daily"
+		btn_config = "Config"
+		btn_logs = "Logs"
+		btn_profile = "Profile"
+		btn_clear = "Clear"
+		btn_quit = "Quit"
 
 		with Horizontal(id="main-view"):
 			sidebar = VerticalScroll(id="sidebar-pane")
@@ -954,8 +965,9 @@ class RewardsFarmerApp(App):
 					yield Static("Points: +0  ·  Session: +0", id="stat-points")
 					yield Static("▶ Ready", id="active-step-label")
 					yield ProgressBar(id="active-step-bar", show_eta=False, show_percentage=True)
-					yield Static("⏳ Delay: idle", id="timer-search-delay")
-					yield Static("⏰ Daily: idle", id="timer-schedule-window")
+					with Horizontal(id="timers-row"):
+						yield Static(f"{glyphs['delay']} Delay: idle", id="timer-search-delay")
+						yield Static(f"{glyphs['daily']} Daily: idle", id="timer-schedule-window")
 
 			with Vertical(id="content-pane"):
 				prog = Container(id="panel-progress")
@@ -1134,8 +1146,7 @@ class RewardsFarmerApp(App):
 
 			# Dynamic Daily button label
 			is_armed = daily_schedule.load_plan() is not None
-			sched_icon = "⏰ " if _is_unicode_supported() else ""
-			self.query_one("#daily", Button).label = f"{sched_icon}Undaily" if is_armed else f"{sched_icon}Daily"
+			self.query_one("#daily", Button).label = "Undaily" if is_armed else "Daily"
 
 			# Live Dashboard widgets
 			self._paint_dashboard(snapshot)
@@ -1348,8 +1359,7 @@ class RewardsFarmerApp(App):
 		self._schedule_line = result.status_line
 		self.query_one("#schedule", Static).update(result.status_line)
 		try:
-			sched_icon = "⏰ " if _is_unicode_supported() else ""
-			self.query_one("#daily", Button).label = f"{sched_icon}Undaily"
+			self.query_one("#daily", Button).label = "Undaily"
 		except NoMatches:
 			pass
 		self.notify("Daily trigger armed.", timeout=4)
@@ -1363,8 +1373,7 @@ class RewardsFarmerApp(App):
 		self._schedule_line = daily_schedule.status_line(None)
 		self.query_one("#schedule", Static).update(self._schedule_line)
 		try:
-			sched_icon = "⏰ " if _is_unicode_supported() else ""
-			self.query_one("#daily", Button).label = f"{sched_icon}Daily"
+			self.query_one("#daily", Button).label = "Daily"
 		except NoMatches:
 			pass
 		self.notify(message, timeout=4)
