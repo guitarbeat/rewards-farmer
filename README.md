@@ -68,6 +68,12 @@ You must also have a [webdriver for Microsoft Edge](https://learn.microsoft.com/
 
 At this point you can run the config script using `python src/init-config.py`, which will walk you through the available configuration options. However, it is still recommended that you continue reading the rest of this README before doing so to fully understand each option.
 
+Running `init-config.py` with the `--manage-accounts` flag (shown below) will allow you to add, remove, and sign in to accounts without reconfiguring the entire project.
+
+```sh
+py .\src\init-config.py --manage-accounts
+```
+
 ### Where search queries come from
 
 The bot needs short strings to type into Bing. Two backends produce them, set with `QUERY_SOURCE`:

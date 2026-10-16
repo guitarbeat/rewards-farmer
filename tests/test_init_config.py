@@ -190,3 +190,40 @@ class TestMain(QuietOutputTestCase):
 				with mock.patch.object(init_config, "configure_variables", side_effect=OSError("cannot write")):
 					with mock.patch("builtins.open", mock.mock_open()):
 						init_config.main()
+
+
+class TestManageAccounts(QuietOutputTestCase):
+	def test_manage_accounts_exit_immediately(self):
+		config_path = Path("config.env")
+		with mock.patch.object(init_config, "path_input", return_value=config_path):
+			with mock.patch.object(init_config.dotenv, "load_dotenv"):
+				with mock.patch.object(init_config, "one_of_with_default", return_value="exit"):
+					with mock.patch.object(init_config.dotenv, "set_key") as set_key:
+						init_config.manage_accounts()
+						set_key.assert_called_once_with(str(config_path), "REWARDS_ACCOUNTS", "")
+
+	def test_manage_accounts_add_account(self):
+		config_path = Path("config.env")
+		with mock.patch.object(init_config, "path_input", return_value=config_path):
+			with mock.patch.object(init_config.dotenv, "load_dotenv"):
+				with mock.patch.object(init_config, "one_of_with_default", side_effect=["add", "exit"]):
+					with mock.patch.object(init_config, "positive_integer_with_default", return_value=1):
+						with mock.patch.object(init_config, "nonempty_input", return_value="profile_1"):
+							with mock.patch.object(init_config, "boolean_with_default", return_value=False):
+								with mock.patch.object(init_config.dotenv, "set_key") as set_key:
+									init_config.manage_accounts()
+									set_key.assert_called_once_with(str(config_path), "REWARDS_ACCOUNTS", "profile_1")
+
+	def test_manage_accounts_remove_account(self):
+		config_path = Path("config.env")
+		with mock.patch.object(init_config, "path_input", return_value=config_path):
+			with mock.patch.object(init_config.dotenv, "load_dotenv"):
+				with mock.patch.dict(os.environ, {"REWARDS_ACCOUNTS": "acc1, acc2"}):
+					with mock.patch.object(
+						init_config,
+						"one_of_with_default",
+						side_effect=["remove", "acc1", "<none>", "exit"]
+					):
+						with mock.patch.object(init_config.dotenv, "set_key") as set_key:
+							init_config.manage_accounts()
+							set_key.assert_called_once_with(str(config_path), "REWARDS_ACCOUNTS", "acc2")

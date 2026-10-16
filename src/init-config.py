@@ -4,7 +4,9 @@ import time
 from accounts import Account, directory_name_is_valid
 from browser import start_driver
 import sys
+import dotenv
 from typing import Literal, TextIO
+from argparse import ArgumentParser
 
 def one_of_with_default(prompt: str, options: list[str], default: str) -> str:
 	while True:
@@ -271,5 +273,129 @@ def main():
 	except OSError as e:
 		print(f"Error creating or clearing the .env file: {e}")
 
+def manage_accounts():
+	print("Add, remove, or modify accounts without changing other configuration settings here.\n")
+
+	path_to_dotenv = path_input(f"Path to .env file: ", Path(__file__).parent.parent / ".env", create="file")
+
+	# we could use dotenv.get_key to read REWARDS_ACCOUNTS, but loading the .env file ensures that
+	# sign-in works correctly if the user configured custom paths for the driver and browser.
+	dotenv.load_dotenv(dotenv_path=path_to_dotenv)
+
+	current_accounts_str = os.environ.get("REWARDS_ACCOUNTS", "")
+	current_accounts = [acc.strip() for acc in current_accounts_str.split(",")] if current_accounts_str else []
+
+	if not current_accounts:
+		print("No accounts are currently configured.")
+	else:
+		print(f"Current accounts ({len(current_accounts)}): {', '.join(current_accounts)}")
+
+	while 1:
+		opt = one_of_with_default("Would you like to add, remove, or modify accounts?", ["add", "remove", "signin", "exit"], "exit")
+
+		if opt == "add":
+			n = positive_integer_with_default("How many accounts would you like to add?", 1)
+
+			for i in range(n):
+				print(f"\nAdding account {i + 1} of {n}:")
+
+				while True:
+					data_dir_name = nonempty_input("Enter an account name: ").strip()
+
+					if data_dir_name in current_accounts:
+						print(f"Account name '{data_dir_name}' is already used. Please choose a different name.")
+						continue
+
+					if directory_name_is_valid(data_dir_name): break
+
+					print(f"Invalid account name '{data_dir_name}'. Please use letters, digits, dot, dash or underscore, and do not end in a dot. Do not use spaces.")
+
+				current_accounts.append(data_dir_name)
+
+				if boolean_with_default("Would you like to sign in to this profile now?", True):
+					print(f"Launching browser for account '{data_dir_name}' for sign-in")
+
+					driver = start_driver(
+						Account(
+							data_dir_name,
+							user_data_dir=Path(dotenv.get_key(str(path_to_dotenv), "USER_DATA_DIR") or Path(__file__).parent.parent / "data-dir") / data_dir_name,
+							profile_name="Default",
+						)
+					)
+
+					if not driver:
+						print("Failed to start the browser for sign-in. Please ensure msedgedriver.exe and msedge.exe are correctly set up.")
+						continue
+
+					print("Close the browser window after signing in to the account. The script will wait until the browser is closed before proceeding.")
+
+					while True:
+						try:
+							driver.title
+							time.sleep(0.5)
+						except Exception: break
+
+		elif opt == "remove":
+			if not current_accounts:
+				print("No accounts to remove.")
+				continue
+
+			while True:
+				acc_to_remove = one_of_with_default("Enter the account name to remove (enter <none> when done)", [*current_accounts, "<none>"], "<none>")
+
+				if acc_to_remove == "<none>":
+					break
+
+				current_accounts.remove(acc_to_remove)
+				print(f"Account '{acc_to_remove}' removed.")
+		elif opt == "signin":
+			if not current_accounts:
+				print("No accounts to sign in to.")
+				continue
+
+			while True:
+				acc_to_signin = one_of_with_default("Enter the account name to sign in (enter <none> when done)", [*current_accounts, "<none>"], "<none>")
+
+				if acc_to_signin == "<none>":
+					break
+
+				print(f"Launching browser for account '{acc_to_signin}' for sign-in")
+
+				driver = start_driver(
+					Account(
+						acc_to_signin,
+						user_data_dir=Path(dotenv.get_key(str(path_to_dotenv), "USER_DATA_DIR") or Path(__file__).parent.parent / "data-dir") / acc_to_signin,
+						profile_name="Default",
+					)
+				)
+
+				if not driver:
+					print("Failed to start the browser for sign-in. Please ensure msedgedriver.exe and msedge.exe are correctly set up.")
+					continue
+
+				print("Close the browser window after signing in to the account. The script will wait until the browser is closed before proceeding.")
+
+				while True:
+					try:
+						driver.title
+						time.sleep(0.5)
+					except Exception: break
+
+		else: break
+
+	# Update the .env file with the new account list
+
+	dotenv.set_key(str(path_to_dotenv), "REWARDS_ACCOUNTS", ",".join(current_accounts))
+
 if __name__ == "__main__":
+	parser = ArgumentParser(description="Configure the Rewards Farmer application.")
+
+	parser.add_argument("--manage-accounts", action="store_true", help="Launch the account management interface to add, remove, or modify accounts without changing other configuration settings.")
+
+	launch_account_management: bool = parser.parse_args().manage_accounts
+
+	if launch_account_management:
+		manage_accounts()
+		exit()
+
 	main()
